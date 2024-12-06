@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import User from "@/models/user.model";
 import { connectDB } from "@/app/lib/mongoose";
-import z, { ZodError } from "zod";
+import z from "zod";
 import jwt from "jsonwebtoken";
 import bycrypt from "bcryptjs";
+import { handleErrorResponse } from "@/app/handlers/errorHandler";
 
 const userSchema = z.object({
 	firstname: z.string().min(2).max(50),
@@ -71,28 +72,6 @@ export async function POST(req: any) {
 			}
 		);
 	} catch (error) {
-		if (error instanceof ZodError) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "Validation Error",
-					issues: error.errors, // Provide detailed validation errors
-				}),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
-		}
-		return new Response(
-			JSON.stringify({
-				success: false,
-				message: error instanceof Error ? error.message : String(error),
-			}),
-			{
-				status: 500,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return handleErrorResponse(error);
 	}
 }

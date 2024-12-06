@@ -4,6 +4,8 @@ import Restaurant from "@/models/restaurant.model";
 import { connectDB } from "@/app/lib/mongoose";
 import z, { ZodError } from "zod";
 import User from "@/models/user.model";
+import jwt from "jsonwebtoken";
+import { handleErrorResponse } from "@/app/handlers/errorHandler";
 
 const inputSchema = z.object({
 	name: z.string().min(2).max(50),
@@ -13,11 +15,8 @@ const inputSchema = z.object({
 	state: z.string().min(2).max(50),
 	pincode: z.number().int().min(100000).max(999999), // Example: Indian pincode range
 	country: z.string().min(2).max(50),
-	gstin: z.string().min(2).max(50),
-	owner: z
-		.string()
-		.regex(/^[a-fA-F0-9]{24}$/, "Invalid ObjectId format") // Validate as ObjectId
-		.optional(),
+	gstin: z.string().min(2).max(50).optional(),
+	owner: z.string().regex(/^[a-fA-F0-9]{24}$/, "Invalid ObjectId format"),
 });
 
 const updateSchema = z.object({
@@ -31,11 +30,6 @@ const updateSchema = z.object({
 		pincode: z.number().int().min(100000).max(999999).optional(),
 		country: z.string().min(2).max(50).optional(),
 		gstin: z.string().min(2).max(50).optional(),
-		restrict: z.boolean().optional(),
-		owner: z
-			.string()
-			.regex(/^[a-fA-F0-9]{24}$/, "Invalid ObjectId format")
-			.optional(),
 	}),
 });
 
@@ -48,18 +42,50 @@ export async function POST(req: any) {
 	try {
 		await connectDB();
 		const body = await req.json();
-		const { owner } = body;
-		if (owner) {
-			const user = await User.findById(owner);
-			if (!user) {
-				return new Response(
-					JSON.stringify({ success: false, data: "Owner does not exist" }),
-					{
-						status: 400,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
-			}
+		const superAdminToken = req.headers.get("superadmintoken").split(" ")[1];
+		const adminToken = req.headers.get("admintoken").split(" ")[1];
+		const superadminsecret = process.env.SUPER_ADMIN_JWT_SECRET;
+		const adminsecret = process.env.ADMIN_JWT_SECRET;
+		if (!adminsecret || !superadminsecret) {
+			return new Response(
+				JSON.stringify({ success: false, data: "Server error" }),
+				{
+					status: 500,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
+		const decoded = jwt.verify(superAdminToken, superadminsecret);
+		if (!decoded) {
+			return new Response(
+				JSON.stringify({ success: false, data: "Invalid token" }),
+				{
+					status: 401,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
+		const decodedAdmin = jwt.verify(adminToken, adminsecret);
+		if (!decodedAdmin) {
+			return new Response(
+				JSON.stringify({ success: false, data: "Invalid token" }),
+				{
+					status: 401,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
+		let id: string;
+		if (typeof decodedAdmin !== "string" && "id" in decodedAdmin) {
+			body.owner = decodedAdmin.id;
+		} else {
+			return new Response(
+				JSON.stringify({ success: false, data: "Invalid token" }),
+				{
+					status: 401,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
 		}
 		const data = inputSchema.parse(body);
 		const response = await Restaurant.create(data);
@@ -68,57 +94,62 @@ export async function POST(req: any) {
 			headers: { "Content-Type": "application/json" },
 		});
 	} catch (error) {
-		if (error instanceof ZodError) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "Validation Error",
-					issues: error.errors, // Provide detailed validation errors
-				}),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
-		}
-		return new Response(
-			JSON.stringify({
-				success: false,
-				message: error instanceof Error ? error.message : String(error),
-			}),
-			{
-				status: 500,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return handleErrorResponse(error);
 	}
 }
 export async function PUT(req: any) {
 	try {
 		await connectDB();
 		const body = await req.json();
-		console.log(body);
-		const { id, updates } = updateSchema.parse(body);
-		console.log(id, updates);
-
-		// If the owner is being updated, validate the owner
-		if (updates.owner) {
-			const user = await User.findById(updates.owner);
-			if (!user) {
-				return new Response(
-					JSON.stringify({ success: false, message: "Owner does not exist" }),
-					{
-						status: 400,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
-			}
+		const adminToken = req.headers.get("admintoken").split(" ")[1];
+		const adminsecret = process.env.ADMIN_JWT_SECRET;
+		if (!adminsecret) {
+			return new Response(
+				JSON.stringify({ success: false, data: "Server error" }),
+				{
+					status: 500,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
+		const decodedAdmin = jwt.verify(adminToken, adminsecret);
+		if (!decodedAdmin) {
+			return new Response(
+				JSON.stringify({ success: false, data: "Invalid token" }),
+				{
+					status: 401,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
 		}
 
-		const { restrict, ...rest } = updates;
+		let adminId: string;
+		if (typeof decodedAdmin !== "string" && "id" in decodedAdmin) {
+			adminId = decodedAdmin.id;
+		} else {
+			return new Response(
+				JSON.stringify({ success: false, data: "Invalid token" }),
+				{
+					status: 401,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
+
+		const { id, updates } = updateSchema.parse(body);
+		const restaurant = await Restaurant.findById(id);
+		if (!restaurant || restaurant.owner.toString() !== adminId) {
+			return new Response(
+				JSON.stringify({ success: false, message: "Restaurant not found" }),
+				{
+					status: 404,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
 
 		// Update the restaurant with the provided updates
-		const updatedRestaurant = await Restaurant.findByIdAndUpdate(id, rest, {
+		const updatedRestaurant = await Restaurant.findByIdAndUpdate(id, updates, {
 			new: true,
 		}).populate("owner");
 		if (!updatedRestaurant || updatedRestaurant.deleted) {
@@ -139,29 +170,7 @@ export async function PUT(req: any) {
 			}
 		);
 	} catch (error: any) {
-		if (error instanceof ZodError) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "Validation Error",
-					issues: error.errors, // Provide detailed validation errors
-				}),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
-		}
-		return new Response(
-			JSON.stringify({
-				success: false,
-				message: error instanceof Error ? error.message : String(error),
-			}),
-			{
-				status: 500,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return handleErrorResponse(error);
 	}
 }
 
@@ -170,7 +179,6 @@ export async function GET(req: any) {
 		await connectDB();
 
 		const body = req.json();
-		console.log(body);
 
 		const url = new URL(req.url);
 		const id = url.searchParams.get("id"); // Optional: Fetch a specific restaurant by ID
@@ -198,29 +206,7 @@ export async function GET(req: any) {
 			headers: { "Content-Type": "application/json" },
 		});
 	} catch (error: any) {
-		if (error instanceof ZodError) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "Validation Error",
-					issues: error.errors, // Provide detailed validation errors
-				}),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
-		}
-		return new Response(
-			JSON.stringify({
-				success: false,
-				message: error instanceof Error ? error.message : String(error),
-			}),
-			{
-				status: 500,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return handleErrorResponse(error);
 	}
 }
 
@@ -256,28 +242,6 @@ export async function DELETE(req: any) {
 			}
 		);
 	} catch (error) {
-		if (error instanceof ZodError) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "Validation Error",
-					issues: error.errors, // Provide detailed validation errors
-				}),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
-		}
-		return new Response(
-			JSON.stringify({
-				success: false,
-				message: error instanceof Error ? error.message : String(error),
-			}),
-			{
-				status: 500,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return handleErrorResponse(error);
 	}
 }

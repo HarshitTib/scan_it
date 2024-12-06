@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import User from "@/models/user.model";
 import { connectDB } from "@/app/lib/mongoose";
-import z, { ZodError } from "zod";
+import z from "zod";
 import jwt from "jsonwebtoken";
 import bycrpyt from "bcryptjs";
+import { handleErrorResponse } from "@/app/handlers/errorHandler";
 
 // Updated phone validation to handle phone numbers as strings
 const userSchema = z.object({
@@ -32,9 +33,7 @@ export async function POST(req: any) {
 	try {
 		await connectDB();
 		const body = await req.json(); // Accessing body from req
-		console.log(body);
 		const superadmintoken = req.headers.get("superadmintoken");
-		console.log(superadmintoken);
 		const superadminsecret = process.env.SUPER_ADMIN_JWT_SECRET;
 		if (!superadmintoken) {
 			return new Response(
@@ -48,7 +47,6 @@ export async function POST(req: any) {
 				}
 			);
 		}
-
 		if (!superadminsecret) {
 			return new Response(
 				JSON.stringify({
@@ -64,8 +62,7 @@ export async function POST(req: any) {
 
 		const token1 = superadmintoken.split(" ")[1];
 
-		const superadminid = jwt.verify(token1, superadminsecret) as jwt.JwtPayload;
-		console.log(superadminid);
+		const superadminid = jwt.verify(token1, superadminsecret);
 		if (!superadminid) {
 			return new Response(
 				JSON.stringify({
@@ -94,7 +91,6 @@ export async function POST(req: any) {
 		const password = body.password;
 		const salt = await bycrpyt.genSalt(10);
 		body.password = await bycrpyt.hash(password, salt);
-		console.log(body);
 
 		const data = userSchema.parse(body); // Validating request body
 
@@ -132,29 +128,7 @@ export async function POST(req: any) {
 			}
 		);
 	} catch (error) {
-		if (error instanceof ZodError) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "Validation Error",
-					issues: error.errors, // Provide detailed validation errors
-				}),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
-		}
-		return new Response(
-			JSON.stringify({
-				success: false,
-				message: error instanceof Error ? error.message : String(error),
-			}),
-			{
-				status: 500,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return handleErrorResponse(error);
 	}
 }
 
@@ -220,29 +194,7 @@ export async function GET(req: any) {
 			});
 		}
 	} catch (error) {
-		if (error instanceof ZodError) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "Validation Error",
-					issues: error.errors, // Provide detailed validation errors
-				}),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
-		}
-		return new Response(
-			JSON.stringify({
-				success: false,
-				message: error instanceof Error ? error.message : String(error),
-			}),
-			{
-				status: 500,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return handleErrorResponse(error);
 	}
 }
 
@@ -314,29 +266,7 @@ export async function PUT(req: any) {
 			}
 		);
 	} catch (error) {
-		if (error instanceof ZodError) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "Validation Error",
-					issues: error.errors, // Provide detailed validation errors
-				}),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
-		}
-		return new Response(
-			JSON.stringify({
-				success: false,
-				message: error instanceof Error ? error.message : String(error),
-			}),
-			{
-				status: 500,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return handleErrorResponse(error);
 	}
 }
 
@@ -402,28 +332,6 @@ export async function DELETE(req: any) {
 			}
 		);
 	} catch (error) {
-		if (error instanceof ZodError) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "Validation Error",
-					issues: error.errors, // Provide detailed validation errors
-				}),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
-		}
-		return new Response(
-			JSON.stringify({
-				success: false,
-				message: error instanceof Error ? error.message : String(error),
-			}),
-			{
-				status: 500,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return handleErrorResponse(error);
 	}
 }

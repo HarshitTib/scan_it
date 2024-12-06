@@ -4,6 +4,7 @@ import FoodItem from "@/models/fooditem.model";
 import { connectDB } from "@/app/lib/mongoose";
 import z, { ZodError } from "zod";
 import Restaurant from "@/models/restaurant.model";
+import { handleErrorResponse } from "@/app/handlers/errorHandler";
 
 const inputSchema = z.object({
 	title: z.string().min(2).max(50),
@@ -70,29 +71,7 @@ export async function POST(req: any) {
 			headers: { "Content-Type": "application/json" },
 		});
 	} catch (error: any) {
-		if (error instanceof ZodError) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "Validation Error",
-					issues: error.errors, // Provide detailed validation errors
-				}),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
-		}
-		return new Response(
-			JSON.stringify({
-				success: false,
-				message: error instanceof Error ? error.message : String(error),
-			}),
-			{
-				status: 500,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return handleErrorResponse(error);
 	}
 }
 
@@ -134,29 +113,7 @@ export async function PUT(req: any) {
 			}
 		);
 	} catch (error: any) {
-		if (error instanceof ZodError) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "Validation Error",
-					issues: error.errors, // Provide detailed validation errors
-				}),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
-		}
-		return new Response(
-			JSON.stringify({
-				success: false,
-				message: error instanceof Error ? error.message : String(error),
-			}),
-			{
-				status: 500,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return handleErrorResponse(error);
 	}
 }
 
@@ -215,29 +172,7 @@ export async function GET(req: any) {
 			headers: { "Content-Type": "application/json" },
 		});
 	} catch (error: any) {
-		if (error instanceof ZodError) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "Validation Error",
-					issues: error.errors, // Provide detailed validation errors
-				}),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
-		}
-		return new Response(
-			JSON.stringify({
-				success: false,
-				message: error instanceof Error ? error.message : String(error),
-			}),
-			{
-				status: 500,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return handleErrorResponse(error);
 	}
 }
 
@@ -269,28 +204,6 @@ export async function DELETE(req: any) {
 			}
 		);
 	} catch (error: any) {
-		if (error instanceof ZodError) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "Validation Error",
-					issues: error.errors, // Provide detailed validation errors
-				}),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
-		}
-		return new Response(
-			JSON.stringify({
-				success: false,
-				message: error instanceof Error ? error.message : String(error),
-			}),
-			{
-				status: 500,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return handleErrorResponse(error);
 	}
 }
