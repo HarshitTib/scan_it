@@ -3,18 +3,19 @@ import User from "@/models/user.model";
 import { connectDB } from "@/app/lib/mongoose";
 import z from "zod";
 import jwt from "jsonwebtoken";
-import bycrypt from "bcryptjs";
 import { handleErrorResponse } from "@/app/handlers/errorHandler";
+import axios from "axios";
 
 const userSchema = z.object({
 	firstname: z.string().min(2).max(50),
-	password: z.string().min(6),
 	lastname: z.string().min(2).max(50),
 	email: z.string().email(),
 	phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number"), // Regex for valid phone number format
 	role: z.enum(["superadmin", "admin", "user"]).default("superadmin"),
+	otp: z.string().min(6).max(6).optional(),
 });
 
+// while creating user, we will take all the details but the sign in button will be disabled until the user verifies the email
 export async function POST(req: any) {
 	try {
 		await connectDB();
@@ -34,9 +35,55 @@ export async function POST(req: any) {
 		}
 
 		const data = userSchema.parse(rest); // Validating request body
-		const password = data.password;
-		const hashedPassword = bycrypt.hashSync(password, 10);
-		data.password = hashedPassword;
+		const existingUser = await User.findOne({ email: data.email });
+		if (existingUser) {
+			return new Response(
+				JSON.stringify({
+					success: false,
+					message: "Email already exists",
+				}),
+				{
+					status: 409,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
+
+		if (!body.otp) {
+			// If OTP is not provided, generate and send it
+			await axios.post(`${process.env.URL}/api/otp/generate`, {
+				email: data.email,
+			});
+			return new Response(
+				JSON.stringify({
+					success: true,
+					message: "OTP sent to your email. Please verify.",
+				}),
+				{
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
+
+		// Verify the OTP
+		const isOtpValid = await axios.post(`${process.env.URL}/api/otp/verify`, {
+			email: data.email,
+			otp: data.otp,
+		});
+		console.log(isOtpValid);
+		if (!isOtpValid.data.success) {
+			return new Response(
+				JSON.stringify({
+					success: false,
+					message: "Invalid or expired OTP",
+				}),
+				{
+					status: 400,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
 
 		const response = await User.create(data); // Creating user in DB
 		if (!response) {

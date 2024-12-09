@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import User from "@/models/user.model";
 import { connectDB } from "@/app/lib/mongoose";
@@ -5,21 +6,21 @@ import z from "zod";
 import jwt from "jsonwebtoken";
 import bycrpyt from "bcryptjs";
 import { handleErrorResponse } from "@/app/handlers/errorHandler";
+import axios from "axios";
 
 // Updated phone validation to handle phone numbers as strings
 const userSchema = z.object({
 	firstname: z.string().min(2).max(50),
-	password: z.string().min(6),
 	lastname: z.string().min(2).max(50),
 	email: z.string().email(),
 	phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number"), // Regex for valid phone number format
 	role: z.enum(["superadmin", "admin", "user"]).default("admin"),
+	otp: z.string().optional(),
 });
 
 const updateSchema = z.object({
 	firstname: z.string().min(2).max(50).optional(),
 	lastname: z.string().min(2).max(50).optional(),
-	email: z.string().email().optional(),
 	phone: z
 		.string()
 		.regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number")
@@ -88,11 +89,60 @@ export async function POST(req: any) {
 			}
 		}
 
-		const password = body.password;
-		const salt = await bycrpyt.genSalt(10);
-		body.password = await bycrpyt.hash(password, salt);
-
 		const data = userSchema.parse(body); // Validating request body
+		const existingUser = await User.findOne({ email: data.email });
+		if (existingUser) {
+			return new Response(
+				JSON.stringify({ success: false, message: "Email already exists" }),
+				{
+					status: 400,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
+		if (!body.otp) {
+			try {
+				const generateOTP = await axios.post(
+					`${process.env.URL}/api/otp/generate`,
+					{
+						email: data.email,
+					}
+				);
+				return new Response(
+					JSON.stringify({
+						success: true,
+						message: "OTP sent to your email. Please verify.",
+					}),
+					{
+						status: 200,
+						headers: { "Content-Type": "application/json" },
+					}
+				);
+			} catch (error) {
+				return new Response(
+					JSON.stringify({ success: false, message: "OTP not generated" }),
+					{
+						status: 500,
+						headers: { "Content-Type": "application/json" },
+					}
+				);
+			}
+		}
+
+		try {
+			await axios.post(`${process.env.URL}/api/otp/verify`, {
+				email: data.email,
+				otp: data.otp,
+			});
+		} catch (error) {
+			return new Response(
+				JSON.stringify({ success: false, message: "OTP not verified" }),
+				{
+					status: 500,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
 
 		const response = await User.create(data); // Creating user in DB
 		if (!response) {

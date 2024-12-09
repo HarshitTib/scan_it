@@ -215,6 +215,60 @@ export async function DELETE(req: any) {
 		await connectDB();
 		const body = await req.json();
 		const { id } = deleteSchema.parse(body);
+		const adminToken = req.headers.get("admintoken")
+			? req.headers.get("admintoken").split(" ")[1]
+			: "";
+		if (!adminToken) {
+			return new Response(
+				JSON.stringify({ success: false, data: "Invalid token" }),
+				{
+					status: 401,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
+		const adminsecret = process.env.ADMIN_JWT_SECRET;
+		if (!adminsecret) {
+			return new Response(
+				JSON.stringify({ success: false, data: "Server error" }),
+				{
+					status: 500,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
+		const decodedAdmin = jwt.verify(adminToken, adminsecret);
+		if (!decodedAdmin) {
+			return new Response(
+				JSON.stringify({ success: false, data: "Invalid token" }),
+				{
+					status: 401,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
+		let adminid: string;
+		if (typeof decodedAdmin !== "string" && "id" in decodedAdmin) {
+			adminid = decodedAdmin.id;
+		} else {
+			return new Response(
+				JSON.stringify({ success: false, data: "Invalid token" }),
+				{
+					status: 401,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
+		const restaurant = await Restaurant.findById(id);
+		if (!restaurant || restaurant.owner.toString() !== adminid) {
+			return new Response(
+				JSON.stringify({ success: false, message: "Restaurant not found" }),
+				{
+					status: 404,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
 
 		const deletedRestaurant = await Restaurant.findByIdAndUpdate(
 			id,
