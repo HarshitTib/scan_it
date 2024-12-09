@@ -16,6 +16,11 @@ const RestaurantSchema = new mongoose.Schema(
 			type: mongoose.Schema.Types.ObjectId,
 			ref: User,
 		},
+		manager: {
+			type: Array(mongoose.Schema.Types.ObjectId),
+			ref: User,
+			required: false,
+		},
 	},
 	{
 		timestamps: true,

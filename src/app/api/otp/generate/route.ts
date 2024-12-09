@@ -28,6 +28,7 @@ async function sendEmail(to: string, otp: string) {
 
 export async function POST(req: Request) {
 	const { email } = await req.json();
+	console.log("Email:", email);
 
 	if (!email) {
 		return NextResponse.json(
