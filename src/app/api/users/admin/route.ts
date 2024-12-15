@@ -35,6 +35,7 @@ export async function POST(req: any) {
 		await connectDB();
 		const body = await req.json(); // Accessing body from req
 		const superadmintoken = req.headers.get("superadmintoken");
+		console.log(superadmintoken);
 		const superadminsecret = process.env.SUPER_ADMIN_JWT_SECRET;
 		if (!superadmintoken) {
 			return new Response(
@@ -168,7 +169,7 @@ export async function POST(req: any) {
 			);
 		}
 		const id = response._id;
-		const token = jwt.sign({ id }, secret);
+		const token = jwt.sign({ id }, secret, { expiresIn: "6h" });
 
 		return new Response(
 			JSON.stringify({ success: true, message: `Bearer ${token}` }),

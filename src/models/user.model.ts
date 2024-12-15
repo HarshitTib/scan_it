@@ -9,7 +9,7 @@ const User = new mongoose.Schema(
 		role: {
 			type: String,
 			required: true,
-			enum: ["superadmin", "admin", "user"],
+			enum: ["superadmin", "admin", "user", "manager"],
 			default: "user",
 		},
 		deleted: { type: Boolean, default: false },

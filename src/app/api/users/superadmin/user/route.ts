@@ -109,7 +109,7 @@ export async function POST(req: any) {
 			);
 		}
 		const id = response._id;
-		const token = jwt.sign({ id }, secret);
+		const token = jwt.sign({ id }, secret, { expiresIn: "6h" });
 
 		return new Response(
 			JSON.stringify({ success: true, message: `Bearer ${token}` }),

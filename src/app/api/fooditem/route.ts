@@ -5,6 +5,7 @@ import { connectDB } from "@/app/lib/mongoose";
 import z, { ZodError } from "zod";
 import Restaurant from "@/models/restaurant.model";
 import { handleErrorResponse } from "@/app/handlers/errorHandler";
+import jwt from "jsonwebtoken";
 
 const inputSchema = z.object({
 	title: z.string().min(2).max(50),
@@ -27,15 +28,12 @@ const updateSchema = z.object({
 		enabled: z.boolean().optional(),
 		veg: z.boolean().optional(),
 		category: z.string().optional(),
-		restaurant: z
-			.string()
-			.regex(/^[a-fA-F0-9]{24}$/, "Invalid ObjectId format")
-			.optional(),
+		deleted: z.boolean().optional(),
 	}),
 });
 
 const deleteSchema = z.object({
-	id: z.string().regex(/^[a-fA-F0-9]{24}$/, "Invalid ObjectId format"), // Restaurant ID
+	id: z.string().regex(/^[a-fA-F0-9]{24}$/, "Invalid ObjectId format"),
 });
 
 const getSchema = z.object({
@@ -55,10 +53,84 @@ export async function POST(req: any) {
 		await connectDB();
 		const body = await req.json();
 		const { restaurant, ...rest } = inputSchema.parse(body);
-		const res = await Restaurant.findById(restaurant);
-		if (!res || res.deleted) {
+		const restuarantResponse = await Restaurant.findById(restaurant);
+		if (!restuarantResponse || restuarantResponse.deleted) {
 			return new Response(
 				JSON.stringify({ success: false, data: "Restaurant does not exist" }),
+				{
+					status: 400,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
+		const admintoken = req.headers.get("admintoken");
+		const managertoken = req.headers.get("managertoken");
+		if (!admintoken && !managertoken) {
+			return new Response(
+				JSON.stringify({ success: false, data: "Token should be provided" }),
+				{
+					status: 401,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
+		if (admintoken) {
+			const secret = process.env.ADMIN_JWT_SECRET;
+			if (!secret) {
+				return new Response(
+					JSON.stringify({ success: false, data: "Server Error" }),
+					{
+						status: 500,
+						headers: { "Content-Type": "application/json" },
+					}
+				);
+			}
+			const token = admintoken.split(" ")[1];
+			const adminid = jwt.verify(token, secret);
+			const id = (adminid as jwt.JwtPayload).id;
+			if (!adminid || id !== restuarantResponse.owner.toString()) {
+				return new Response(
+					JSON.stringify({ success: false, data: "Unauthorized" }),
+					{
+						status: 401,
+						headers: { "Content-Type": "application/json" },
+					}
+				);
+			}
+		} else if (managertoken) {
+			const secret = process.env.MANAGER_JWT_SECRET;
+			if (!secret) {
+				return new Response(
+					JSON.stringify({ success: false, data: "Server Error" }),
+					{
+						status: 500,
+						headers: { "Content-Type": "application/json" },
+					}
+				);
+			}
+			const token = managertoken.split(" ")[1];
+			const managerid = jwt.verify(token, secret);
+			const id = (managerid as jwt.JwtPayload).id;
+			if (!managerid || !restuarantResponse.manager.includes(id)) {
+				return new Response(
+					JSON.stringify({ success: false, data: "Unauthorized" }),
+					{
+						status: 401,
+						headers: { "Content-Type": "application/json" },
+					}
+				);
+			}
+		}
+		const foodItem = await FoodItem.findOne({
+			title: rest.title,
+			restaurant: restaurant,
+		});
+		if (foodItem) {
+			return new Response(
+				JSON.stringify({
+					success: false,
+					data: `FoodItem already exists for a given title ${rest.title}`,
+				}),
 				{
 					status: 400,
 					headers: { "Content-Type": "application/json" },
@@ -79,8 +151,11 @@ export async function PUT(req: any) {
 	try {
 		await connectDB();
 		const body = await req.json();
+		const admintoken = req.headers.get("admintoken");
+		const managertoken = req.headers.get("managertoken");
 		const { id, updates } = updateSchema.parse(body);
-		const foodItem = await FoodItem.findById(id);
+		const foodItem = await FoodItem.findById(id).populate("restaurant");
+		console.log(foodItem);
 		if (!foodItem || foodItem.deleted) {
 			return new Response(
 				JSON.stringify({ success: false, data: "FoodItem does not exist" }),
@@ -90,18 +165,94 @@ export async function PUT(req: any) {
 				}
 			);
 		}
-		if (updates.restaurant) {
-			const res = await Restaurant.findById(updates.restaurant);
-			if (!res || res.deleted) {
+		if (!foodItem.restaurant || foodItem.restaurant.deleted) {
+			return new Response(
+				JSON.stringify({ success: false, data: "Restaurant does not exist" }),
+				{
+					status: 400,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
+		if (!admintoken && !managertoken) {
+			return new Response(
+				JSON.stringify({ success: false, data: "Token should be provided" }),
+				{
+					status: 401,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
+
+		if (admintoken) {
+			const secret = process.env.ADMIN_JWT_SECRET;
+			if (!secret) {
 				return new Response(
-					JSON.stringify({ success: false, data: "Restaurant does not exist" }),
+					JSON.stringify({ success: false, data: "Server Error" }),
 					{
-						status: 400,
+						status: 500,
+						headers: { "Content-Type": "application/json" },
+					}
+				);
+			}
+			const token = admintoken.split(" ")[1];
+			const adminid = jwt.verify(token, secret);
+			const id = (adminid as jwt.JwtPayload).id;
+			console.log(id);
+			console.log(foodItem.restaurant.owner);
+			if (!adminid || id !== foodItem.restaurant.owner.toString()) {
+				return new Response(
+					JSON.stringify({ success: false, data: "Unauthorized" }),
+					{
+						status: 401,
 						headers: { "Content-Type": "application/json" },
 					}
 				);
 			}
 		}
+
+		if (managertoken) {
+			const secret = process.env.MANAGER_JWT_SECRET;
+			if (!secret) {
+				return new Response(
+					JSON.stringify({ success: false, data: "Server Error" }),
+					{
+						status: 500,
+						headers: { "Content-Type": "application/json" },
+					}
+				);
+			}
+			const token = managertoken.split(" ")[1];
+			const managerid = jwt.verify(token, secret);
+			const id = (managerid as jwt.JwtPayload).id;
+			if (!managerid || !foodItem.restaurant.manager.includes(id)) {
+				return new Response(
+					JSON.stringify({ success: false, data: "Unauthorized" }),
+					{
+						status: 401,
+						headers: { "Content-Type": "application/json" },
+					}
+				);
+			}
+		}
+
+		const foodItemFind = await FoodItem.findOne({
+			title: updates.title,
+			restaurant: foodItem.restaurant._id,
+		});
+		if (foodItemFind) {
+			return new Response(
+				JSON.stringify({
+					success: false,
+					data: `FoodItem already exists for a given title ${updates.title}`,
+				}),
+				{
+					status: 400,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
+
 		const updatedFoodItem = await FoodItem.findByIdAndUpdate(id, updates, {
 			new: true,
 		});
@@ -180,9 +331,12 @@ export async function DELETE(req: any) {
 	try {
 		await connectDB();
 		const body = await req.json();
+		const admintoken = req.headers.get("admintoken");
+		const managertoken = req.headers.get("managertoken");
 		const { id } = deleteSchema.parse(body);
-		const foodItem = await FoodItem.findById(id);
-		if (!foodItem) {
+		const foodItem = await FoodItem.findById(id).populate("restaurant");
+		console.log(foodItem);
+		if (!foodItem || foodItem.deleted) {
 			return new Response(
 				JSON.stringify({ success: false, data: "FoodItem does not exist" }),
 				{
@@ -190,6 +344,72 @@ export async function DELETE(req: any) {
 					headers: { "Content-Type": "application/json" },
 				}
 			);
+		}
+		if (!foodItem.restaurant || foodItem.restaurant.deleted) {
+			return new Response(
+				JSON.stringify({ success: false, data: "Restaurant does not exist" }),
+				{
+					status: 400,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
+		if (!admintoken && !managertoken) {
+			return new Response(
+				JSON.stringify({ success: false, data: "Token should be provided" }),
+				{
+					status: 401,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
+		if (admintoken) {
+			const secret = process.env.ADMIN_JWT_SECRET;
+			if (!secret) {
+				return new Response(
+					JSON.stringify({ success: false, data: "Server Error" }),
+					{
+						status: 500,
+						headers: { "Content-Type": "application/json" },
+					}
+				);
+			}
+			const token = admintoken.split(" ")[1];
+			const adminid = jwt.verify(token, secret);
+			const id = (adminid as jwt.JwtPayload).id;
+			if (!adminid || id !== foodItem.restaurant.owner.toString()) {
+				return new Response(
+					JSON.stringify({ success: false, data: "Unauthorized" }),
+					{
+						status: 401,
+						headers: { "Content-Type": "application/json" },
+					}
+				);
+			}
+		}
+		if (managertoken) {
+			const secret = process.env.MANAGER_JWT_SECRET;
+			if (!secret) {
+				return new Response(
+					JSON.stringify({ success: false, data: "Server Error" }),
+					{
+						status: 500,
+						headers: { "Content-Type": "application/json" },
+					}
+				);
+			}
+			const token = managertoken.split(" ")[1];
+			const managerid = jwt.verify(token, secret);
+			const id = (managerid as jwt.JwtPayload).id;
+			if (!managerid || !foodItem.restaurant.manager.includes(id)) {
+				return new Response(
+					JSON.stringify({ success: false, data: "Unauthorized" }),
+					{
+						status: 401,
+						headers: { "Content-Type": "application/json" },
+					}
+				);
+			}
 		}
 		const updatedFoodItem = await FoodItem.findByIdAndUpdate(
 			id,

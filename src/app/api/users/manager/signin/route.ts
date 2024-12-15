@@ -4,9 +4,7 @@ import User from "@/models/user.model";
 import { connectDB } from "@/app/lib/mongoose";
 import z from "zod";
 import jwt from "jsonwebtoken";
-import bycrpt from "bcryptjs";
 import { handleErrorResponse } from "@/app/handlers/errorHandler";
-import otpModel from "@/models/otp.model";
 import axios from "axios";
 
 const signInSchema = z.object({
@@ -71,7 +69,7 @@ export async function POST(req: any) {
 			);
 		}
 
-		const secret = process.env.ADMIN_JWT_SECRET;
+		const secret = process.env.MANAGER_JWT_SECRET;
 		if (!secret) {
 			return new Response(
 				JSON.stringify({
@@ -85,7 +83,7 @@ export async function POST(req: any) {
 			);
 		}
 		const id = existingUser._id;
-		const token = jwt.sign({ id }, secret);
+		const token = jwt.sign({ id }, secret, { expiresIn: "6h" });
 
 		return new Response(
 			JSON.stringify({ success: true, message: `Bearer ${token}` }),

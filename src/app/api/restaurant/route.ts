@@ -40,10 +40,7 @@ const updateSchema = z.object({
 		pincode: z.number().int().min(100000).max(999999).optional(),
 		country: z.string().min(2).max(50).optional(),
 		gstin: z.string().min(2).max(50).optional(),
-		manager: z
-			.string()
-			.regex(/^[a-fA-F0-9]{24}$/, "Invalid ObjectId format")
-			.optional(),
+		managerEmail: z.string().email("Invalid email format").optional(),
 	}),
 });
 
@@ -136,12 +133,11 @@ export async function POST(req: any) {
 		return handleErrorResponse(error);
 	}
 }
-
 export async function PUT(req: any) {
 	try {
 		await connectDB();
 		const body = await req.json();
-		const adminToken = req.headers.get("admintoken").split(" ")[1];
+		const adminToken = req.headers.get("admintoken")?.split(" ")[1];
 		const adminsecret = process.env.ADMIN_JWT_SECRET;
 		if (!adminsecret) {
 			return new Response(
@@ -177,6 +173,8 @@ export async function PUT(req: any) {
 		}
 
 		const { id, updates } = updateSchema.parse(body);
+
+		// Find the restaurant by ID
 		const restaurant = await Restaurant.findById(id);
 		if (!restaurant || restaurant.owner.toString() !== adminId) {
 			return new Response(
@@ -187,20 +185,26 @@ export async function PUT(req: any) {
 				}
 			);
 		}
+		console.log(updates.managerEmail);
+		if (updates.managerEmail) {
+			const manager = await User.findOne({ email: updates.managerEmail });
+			if (!manager) {
+				return new Response(
+					JSON.stringify({ success: false, message: "Manager not found" }),
+					{
+						status: 404,
+						headers: { "Content-Type": "application/json" },
+					}
+				);
+			}
 
-		// Update the restaurant with the provided updates
-		const updatedRestaurant = await Restaurant.findByIdAndUpdate(id, updates, {
-			new: true,
-		}).populate("owner");
-		if (!updatedRestaurant || updatedRestaurant.deleted) {
-			return new Response(
-				JSON.stringify({ success: false, message: "Restaurant not found" }),
-				{
-					status: 404,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			if (!restaurant.manager || !restaurant.manager.includes(manager._id)) {
+				restaurant.manager.push(manager._id);
+			}
 		}
+
+		Object.assign(restaurant, updates);
+		const updatedRestaurant = await restaurant.save();
 
 		return new Response(
 			JSON.stringify({ success: true, data: updatedRestaurant }),
