@@ -7,6 +7,7 @@ import jwt from "jsonwebtoken";
 import { handleErrorResponse } from "@/app/handlers/errorHandler";
 import axios from "axios";
 import ApiResponseHandler from "@/app/handlers/apiResponseHandler";
+import { StatusCode } from "@/constants/statusCodes";
 
 const signInSchema = z.object({
 	email: z.string().email(),
@@ -21,7 +22,7 @@ export async function POST(req: any) {
 		await connectDB();
 		const existingUser = await User.findOne({ email: data.email });
 		if (!existingUser || existingUser.deleted) {
-			return ApiResponseHandler(false, 404, "Email not found");
+			return ApiResponseHandler(false, StatusCode.NOT_FOUND, "Email not found");
 		}
 		if (!body.otp) {
 			try {
@@ -30,11 +31,15 @@ export async function POST(req: any) {
 				});
 				return ApiResponseHandler(
 					true,
-					200,
+					StatusCode.SUCCESS,
 					`OTP sent to the registered mail address: ${data.email}`
 				);
 			} catch (error) {
-				return ApiResponseHandler(false, 500, "Invalid email");
+				return ApiResponseHandler(
+					false,
+					StatusCode.INTERNAL_SERVER_ERROR,
+					"Invalid email"
+				);
 			}
 		}
 		try {
@@ -43,16 +48,20 @@ export async function POST(req: any) {
 				otp: data.otp,
 			});
 		} catch (error) {
-			return ApiResponseHandler(false, 400, "Invalid OTP");
+			return ApiResponseHandler(false, StatusCode.BAD_REQUEST, "Invalid OTP");
 		}
 
 		const secret = process.env.ADMIN_JWT_SECRET;
 		if (!secret) {
-			return ApiResponseHandler(false, 500, "JWT secret is not defined");
+			return ApiResponseHandler(
+				false,
+				StatusCode.INTERNAL_SERVER_ERROR,
+				"JWT secret is not defined"
+			);
 		}
 		const id = existingUser._id;
 		const token = jwt.sign({ id }, secret, { expiresIn: "6h" });
-		return ApiResponseHandler(true, 200, `Bearer ${token}`);
+		return ApiResponseHandler(true, StatusCode.SUCCESS, `Bearer ${token}`);
 	} catch (error) {
 		return handleErrorResponse(error);
 	}

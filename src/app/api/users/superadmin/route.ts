@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import { handleErrorResponse } from "@/app/handlers/errorHandler";
 import axios from "axios";
 import ApiResponseHandler from "@/app/handlers/apiResponseHandler";
+import { StatusCode } from "@/constants/statusCodes";
 
 const userSchema = z.object({
 	firstname: z.string().min(2).max(50),
@@ -23,13 +24,21 @@ export async function POST(req: any) {
 		const body = await req.json(); // Accessing body from req
 		const { verificationCode, ...rest } = body;
 		if (verificationCode !== process.env.VERIFICATION_CODE) {
-			return ApiResponseHandler(false, 401, "Invalid verification code");
+			return ApiResponseHandler(
+				false,
+				StatusCode.UNAUTHORIZED,
+				"Invalid verification code"
+			);
 		}
 
 		const data = userSchema.parse(rest); // Validating request body
 		const existingUser = await User.findOne({ email: data.email });
 		if (existingUser) {
-			return ApiResponseHandler(false, 409, "Email already exists");
+			return ApiResponseHandler(
+				false,
+				StatusCode.CONFLICT,
+				"Email already exists"
+			);
 		}
 
 		if (!body.otp) {
@@ -39,7 +48,7 @@ export async function POST(req: any) {
 			});
 			return ApiResponseHandler(
 				true,
-				200,
+				StatusCode.SUCCESS,
 				"OTP sent to your email. Please verify."
 			);
 		}
@@ -50,20 +59,28 @@ export async function POST(req: any) {
 			otp: data.otp,
 		});
 		if (!isOtpValid.data.success) {
-			return ApiResponseHandler(false, 400, "Invalid OTP");
+			return ApiResponseHandler(false, StatusCode.BAD_REQUEST, "Invalid OTP");
 		}
 
 		const response = await User.create(data); // Creating user in DB
 		if (!response) {
-			return ApiResponseHandler(false, 500, "User not created");
+			return ApiResponseHandler(
+				false,
+				StatusCode.INTERNAL_SERVER_ERROR,
+				"User not created"
+			);
 		}
 		const secret = process.env.SUPER_ADMIN_JWT_SECRET;
 		if (!secret) {
-			return ApiResponseHandler(false, 500, "JWT secret is not defined");
+			return ApiResponseHandler(
+				false,
+				StatusCode.INTERNAL_SERVER_ERROR,
+				"JWT secret is not defined"
+			);
 		}
 		const id = response._id;
 		const token = jwt.sign({ id }, secret, { expiresIn: "6h" });
-		return ApiResponseHandler(true, 200, `Bearer ${token}`);
+		return ApiResponseHandler(true, StatusCode.SUCCESS, `Bearer ${token}`);
 	} catch (error) {
 		return handleErrorResponse(error);
 	}

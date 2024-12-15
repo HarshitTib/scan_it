@@ -7,6 +7,7 @@ import Restaurant from "@/models/restaurant.model";
 import { handleErrorResponse } from "@/app/handlers/errorHandler";
 import jwt from "jsonwebtoken";
 import ApiResponseHandler from "@/app/handlers/apiResponseHandler";
+import { StatusCode } from "@/constants/statusCodes";
 
 const inputSchema = z.object({
 	title: z.string().min(2).max(50),
@@ -55,34 +56,58 @@ export async function POST(req: any) {
 		const { restaurant, ...rest } = inputSchema.parse(body);
 		const restuarantResponse = await Restaurant.findById(restaurant);
 		if (!restuarantResponse || restuarantResponse.deleted) {
-			return ApiResponseHandler(false, 400, "Restaurant does not exist");
+			return ApiResponseHandler(
+				false,
+				StatusCode.BAD_REQUEST,
+				"Restaurant does not exist"
+			);
 		}
 		const admintoken = req.headers.get("admintoken");
 		const managertoken = req.headers.get("managertoken");
 		if (!admintoken && !managertoken) {
-			return ApiResponseHandler(false, 401, "Token should be provided");
+			return ApiResponseHandler(
+				false,
+				StatusCode.UNAUTHORIZED,
+				"Token should be provided"
+			);
 		}
 		if (admintoken) {
 			const secret = process.env.ADMIN_JWT_SECRET;
 			if (!secret) {
-				return ApiResponseHandler(false, 500, "Server Error");
+				return ApiResponseHandler(
+					false,
+					StatusCode.INTERNAL_SERVER_ERROR,
+					"Server Error"
+				);
 			}
 			const token = admintoken.split(" ")[1];
 			const adminid = jwt.verify(token, secret);
 			const id = (adminid as jwt.JwtPayload).id;
 			if (!adminid || id !== restuarantResponse.owner.toString()) {
-				return ApiResponseHandler(false, 401, "Unauthorized");
+				return ApiResponseHandler(
+					false,
+					StatusCode.UNAUTHORIZED,
+					"Unauthorized"
+				);
 			}
 		} else if (managertoken) {
 			const secret = process.env.MANAGER_JWT_SECRET;
 			if (!secret) {
-				return ApiResponseHandler(false, 500, "Server Error");
+				return ApiResponseHandler(
+					false,
+					StatusCode.INTERNAL_SERVER_ERROR,
+					"Server Error"
+				);
 			}
 			const token = managertoken.split(" ")[1];
 			const managerid = jwt.verify(token, secret);
 			const id = (managerid as jwt.JwtPayload).id;
 			if (!managerid || !restuarantResponse.manager.includes(id)) {
-				return ApiResponseHandler(false, 401, "Unauthorized");
+				return ApiResponseHandler(
+					false,
+					StatusCode.UNAUTHORIZED,
+					"Unauthorized"
+				);
 			}
 		}
 		const foodItem = await FoodItem.findOne({
@@ -92,12 +117,12 @@ export async function POST(req: any) {
 		if (foodItem) {
 			return ApiResponseHandler(
 				false,
-				400,
+				StatusCode.BAD_REQUEST,
 				`FoodItem already exists for a given title ${rest.title}`
 			);
 		}
 		const newFoodItem = await FoodItem.create(body);
-		return ApiResponseHandler(true, 200, newFoodItem);
+		return ApiResponseHandler(true, StatusCode.SUCCESS, newFoodItem);
 	} catch (error: any) {
 		return handleErrorResponse(error);
 	}
@@ -113,19 +138,35 @@ export async function PUT(req: any) {
 		const foodItem = await FoodItem.findById(id).populate("restaurant");
 		console.log(foodItem);
 		if (!foodItem || foodItem.deleted) {
-			return ApiResponseHandler(false, 400, "FoodItem does not exist");
+			return ApiResponseHandler(
+				false,
+				StatusCode.BAD_REQUEST,
+				"FoodItem does not exist"
+			);
 		}
 		if (!foodItem.restaurant || foodItem.restaurant.deleted) {
-			return ApiResponseHandler(false, 400, "Restaurant does not exist");
+			return ApiResponseHandler(
+				false,
+				StatusCode.BAD_REQUEST,
+				"Restaurant does not exist"
+			);
 		}
 		if (!admintoken && !managertoken) {
-			return ApiResponseHandler(false, 401, "Token should be provided");
+			return ApiResponseHandler(
+				false,
+				StatusCode.UNAUTHORIZED,
+				"Token should be provided"
+			);
 		}
 
 		if (admintoken) {
 			const secret = process.env.ADMIN_JWT_SECRET;
 			if (!secret) {
-				return ApiResponseHandler(false, 500, "Server Error");
+				return ApiResponseHandler(
+					false,
+					StatusCode.INTERNAL_SERVER_ERROR,
+					"Server Error"
+				);
 			}
 			const token = admintoken.split(" ")[1];
 			const adminid = jwt.verify(token, secret);
@@ -133,20 +174,34 @@ export async function PUT(req: any) {
 			console.log(id);
 			console.log(foodItem.restaurant.owner);
 			if (!adminid || id !== foodItem.restaurant.owner.toString()) {
-				return ApiResponseHandler(false, 401, "Unauthorized");
+				return ApiResponseHandler(
+					false,
+					StatusCode.UNAUTHORIZED,
+					"Unauthorized"
+				);
 			}
 		}
 
 		if (managertoken) {
 			const secret = process.env.MANAGER_JWT_SECRET;
 			if (!secret) {
-				return ApiResponseHandler(false, 500, "Server Error");
+				return ApiResponseHandler(
+					false,
+					StatusCode.INTERNAL_SERVER_ERROR,
+					"Server Error"
+				);
 			}
+			console.log(secret);
 			const token = managertoken.split(" ")[1];
 			const managerid = jwt.verify(token, secret);
 			const id = (managerid as jwt.JwtPayload).id;
+			console.log(id);
 			if (!managerid || !foodItem.restaurant.manager.includes(id)) {
-				return ApiResponseHandler(false, 401, "Unauthorized");
+				return ApiResponseHandler(
+					false,
+					StatusCode.UNAUTHORIZED,
+					"Unauthorized"
+				);
 			}
 		}
 
@@ -157,7 +212,7 @@ export async function PUT(req: any) {
 		if (foodItemFind) {
 			return ApiResponseHandler(
 				false,
-				400,
+				StatusCode.BAD_REQUEST,
 				`FoodItem already exists for a given title ${updates.title}`
 			);
 		}
@@ -165,7 +220,7 @@ export async function PUT(req: any) {
 		const updatedFoodItem = await FoodItem.findByIdAndUpdate(id, updates, {
 			new: true,
 		});
-		return ApiResponseHandler(true, 200, updatedFoodItem);
+		return ApiResponseHandler(true, StatusCode.SUCCESS, updatedFoodItem);
 	} catch (error: any) {
 		return handleErrorResponse(error);
 	}
@@ -180,9 +235,13 @@ export async function GET(req: any) {
 		if (id) {
 			const foodItem = await FoodItem.findById(id).populate("restaurant");
 			if (!foodItem || foodItem.deleted) {
-				return ApiResponseHandler(false, 400, "FoodItem does not exist");
+				return ApiResponseHandler(
+					false,
+					StatusCode.BAD_REQUEST,
+					"FoodItem does not exist"
+				);
 			}
-			return ApiResponseHandler(true, 200, foodItem);
+			return ApiResponseHandler(true, StatusCode.SUCCESS, foodItem);
 		}
 		if (restaurant) {
 			const foodItems = await FoodItem.find({ restaurant });
@@ -194,14 +253,18 @@ export async function GET(req: any) {
 			if (!foodItems || foodItems.length === 0) {
 				return ApiResponseHandler(
 					false,
-					400,
+					StatusCode.BAD_REQUEST,
 					`FoodItems does not exist for a given restaurant ${restaurant}`
 				);
 			}
-			return ApiResponseHandler(true, 200, foodItemsWhichIsNotDeleted);
+			return ApiResponseHandler(
+				true,
+				StatusCode.SUCCESS,
+				foodItemsWhichIsNotDeleted
+			);
 		}
 		const foodItems = await FoodItem.find();
-		return ApiResponseHandler(true, 200, foodItems);
+		return ApiResponseHandler(true, StatusCode.SUCCESS, foodItems);
 	} catch (error: any) {
 		return handleErrorResponse(error);
 	}
@@ -217,36 +280,64 @@ export async function DELETE(req: any) {
 		const foodItem = await FoodItem.findById(id).populate("restaurant");
 		console.log(foodItem);
 		if (!foodItem || foodItem.deleted) {
-			return ApiResponseHandler(false, 400, "FoodItem does not exist");
+			return ApiResponseHandler(
+				false,
+				StatusCode.BAD_REQUEST,
+				"FoodItem does not exist"
+			);
 		}
 		if (!foodItem.restaurant || foodItem.restaurant.deleted) {
-			return ApiResponseHandler(false, 400, "Restaurant does not exist");
+			return ApiResponseHandler(
+				false,
+				StatusCode.BAD_REQUEST,
+				"Restaurant does not exist"
+			);
 		}
 		if (!admintoken && !managertoken) {
-			return ApiResponseHandler(false, 401, "Token should be provided");
+			return ApiResponseHandler(
+				false,
+				StatusCode.UNAUTHORIZED,
+				"Token should be provided"
+			);
 		}
 		if (admintoken) {
 			const secret = process.env.ADMIN_JWT_SECRET;
 			if (!secret) {
-				return ApiResponseHandler(false, 500, "Server Error");
+				return ApiResponseHandler(
+					false,
+					StatusCode.INTERNAL_SERVER_ERROR,
+					"Server Error"
+				);
 			}
 			const token = admintoken.split(" ")[1];
 			const adminid = jwt.verify(token, secret);
 			const id = (adminid as jwt.JwtPayload).id;
 			if (!adminid || id !== foodItem.restaurant.owner.toString()) {
-				return ApiResponseHandler(false, 401, "Unauthorized");
+				return ApiResponseHandler(
+					false,
+					StatusCode.UNAUTHORIZED,
+					"Unauthorized"
+				);
 			}
 		}
 		if (managertoken) {
 			const secret = process.env.MANAGER_JWT_SECRET;
 			if (!secret) {
-				return ApiResponseHandler(false, 500, "Server Error");
+				return ApiResponseHandler(
+					false,
+					StatusCode.INTERNAL_SERVER_ERROR,
+					"Server Error"
+				);
 			}
 			const token = managertoken.split(" ")[1];
 			const managerid = jwt.verify(token, secret);
 			const id = (managerid as jwt.JwtPayload).id;
 			if (!managerid || !foodItem.restaurant.manager.includes(id)) {
-				return ApiResponseHandler(false, 401, "Unauthorized");
+				return ApiResponseHandler(
+					false,
+					StatusCode.UNAUTHORIZED,
+					"Unauthorized"
+				);
 			}
 		}
 		const updatedFoodItem = await FoodItem.findByIdAndUpdate(
@@ -254,7 +345,7 @@ export async function DELETE(req: any) {
 			{ deleted: true },
 			{ new: true }
 		);
-		return ApiResponseHandler(true, 200, updatedFoodItem);
+		return ApiResponseHandler(true, StatusCode.SUCCESS, updatedFoodItem);
 	} catch (error: any) {
 		return handleErrorResponse(error);
 	}

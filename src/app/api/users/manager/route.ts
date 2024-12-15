@@ -7,6 +7,7 @@ import jwt from "jsonwebtoken";
 import { handleErrorResponse } from "@/app/handlers/errorHandler";
 import axios from "axios";
 import ApiResponseHandler from "@/app/handlers/apiResponseHandler";
+import { StatusCode } from "@/constants/statusCodes";
 
 // Updated phone validation to handle phone numbers as strings
 const userSchema = z.object({
@@ -38,10 +39,18 @@ export async function POST(req: any) {
 		console.log(admintoken);
 		const adminsecret = process.env.ADMIN_JWT_SECRET;
 		if (!admintoken) {
-			return ApiResponseHandler(false, 401, "Admin Token is required");
+			return ApiResponseHandler(
+				false,
+				StatusCode.UNAUTHORIZED,
+				"Admin Token is required"
+			);
 		}
 		if (!adminsecret) {
-			return ApiResponseHandler(false, 500, "Admin JWT secret is not defined");
+			return ApiResponseHandler(
+				false,
+				StatusCode.INTERNAL_SERVER_ERROR,
+				"Admin JWT secret is not defined"
+			);
 		}
 
 		const token1 = admintoken.split(" ")[1];
@@ -49,20 +58,32 @@ export async function POST(req: any) {
 
 		const adminid = jwt.verify(token1, adminsecret);
 		if (!adminid) {
-			return ApiResponseHandler(false, 401, "Invalid Admin Token");
+			return ApiResponseHandler(
+				false,
+				StatusCode.UNAUTHORIZED,
+				"Invalid Admin Token"
+			);
 		} else {
 			const id = (adminid as jwt.JwtPayload).id;
 			console.log(id);
 			const user = await User.findById(id);
 			if (!user || user.deleted) {
-				return ApiResponseHandler(false, 404, "Admin not found");
+				return ApiResponseHandler(
+					false,
+					StatusCode.NOT_FOUND,
+					"Admin not found"
+				);
 			}
 		}
 
 		const data = userSchema.parse(body); // Validating request body
 		const existingUser = await User.findOne({ email: data.email });
 		if (existingUser) {
-			return ApiResponseHandler(false, 400, "Email already exists");
+			return ApiResponseHandler(
+				false,
+				StatusCode.BAD_REQUEST,
+				"Email already exists"
+			);
 		}
 		if (!body.otp) {
 			try {
@@ -71,11 +92,15 @@ export async function POST(req: any) {
 				});
 				return ApiResponseHandler(
 					true,
-					200,
+					StatusCode.SUCCESS,
 					"OTP sent to your email. Please verify."
 				);
 			} catch (error) {
-				return ApiResponseHandler(false, 500, "OTP not generated");
+				return ApiResponseHandler(
+					false,
+					StatusCode.INTERNAL_SERVER_ERROR,
+					"OTP not generated"
+				);
 			}
 		}
 
@@ -85,20 +110,32 @@ export async function POST(req: any) {
 				otp: data.otp,
 			});
 		} catch (error) {
-			return ApiResponseHandler(false, 400, "OTP not verified");
+			return ApiResponseHandler(
+				false,
+				StatusCode.BAD_REQUEST,
+				"OTP not verified"
+			);
 		}
 
 		const response = await User.create(data); // Creating user in DB
 		if (!response) {
-			return ApiResponseHandler(false, 500, "User not created");
+			return ApiResponseHandler(
+				false,
+				StatusCode.INTERNAL_SERVER_ERROR,
+				"User not created"
+			);
 		}
 		const secret = process.env.MANAGER_JWT_SECRET;
 		if (!secret) {
-			return ApiResponseHandler(false, 500, "JWT secret is not defined");
+			return ApiResponseHandler(
+				false,
+				StatusCode.INTERNAL_SERVER_ERROR,
+				"JWT secret is not defined"
+			);
 		}
 		const id = response._id;
 		const token = jwt.sign({ id }, secret, { expiresIn: "6h" });
-		return ApiResponseHandler(true, 200, `Bearer ${token}`);
+		return ApiResponseHandler(true, StatusCode.SUCCESS, `Bearer ${token}`);
 	} catch (error) {
 		return handleErrorResponse(error);
 	}
@@ -110,11 +147,19 @@ export async function GET(req: any) {
 		const token = req.headers.get("token");
 		console.log(token);
 		if (!token) {
-			return ApiResponseHandler(false, 401, "Sign In is required");
+			return ApiResponseHandler(
+				false,
+				StatusCode.UNAUTHORIZED,
+				"Sign In is required"
+			);
 		}
 		const secret = process.env.MANAGER_JWT_SECRET;
 		if (!secret) {
-			return ApiResponseHandler(false, 500, "JWT secret is not defined");
+			return ApiResponseHandler(
+				false,
+				StatusCode.INTERNAL_SERVER_ERROR,
+				"JWT secret is not defined"
+			);
 		}
 		const bearerToken = token.split(" ")[1];
 		const decodedToken = jwt.verify(bearerToken, secret);
@@ -128,13 +173,17 @@ export async function GET(req: any) {
 			try {
 				idSchema.parse(id);
 			} catch (error) {
-				return ApiResponseHandler(false, 400, error);
+				return ApiResponseHandler(false, StatusCode.BAD_REQUEST, error);
 			}
 			const user = await User.findById(id);
 			if (!user || user.deleted) {
-				return ApiResponseHandler(false, 404, "User not found");
+				return ApiResponseHandler(
+					false,
+					StatusCode.NOT_FOUND,
+					"User not found"
+				);
 			}
-			return ApiResponseHandler(true, 200, user);
+			return ApiResponseHandler(true, StatusCode.SUCCESS, user);
 		}
 	} catch (error) {
 		return handleErrorResponse(error);
@@ -147,11 +196,19 @@ export async function PUT(req: any) {
 		const body = await req.json();
 		const token = req.headers.get("token");
 		if (!token) {
-			return ApiResponseHandler(false, 401, "Sign In is required");
+			return ApiResponseHandler(
+				false,
+				StatusCode.UNAUTHORIZED,
+				"Sign In is required"
+			);
 		}
 		const secret = process.env.MANAGER_JWT_SECRET;
 		if (!secret) {
-			return ApiResponseHandler(false, 500, "JWT secret is not defined");
+			return ApiResponseHandler(
+				false,
+				StatusCode.INTERNAL_SERVER_ERROR,
+				"JWT secret is not defined"
+			);
 		}
 		const bearerToken = token.split(" ")[1];
 		const decodedToken = jwt.verify(bearerToken, secret);
@@ -161,7 +218,11 @@ export async function PUT(req: any) {
 				: null;
 
 		if (!id) {
-			return ApiResponseHandler(false, 400, "User ID is required");
+			return ApiResponseHandler(
+				false,
+				StatusCode.BAD_REQUEST,
+				"User ID is required"
+			);
 		}
 
 		const data = updateSchema.parse(body); // Validating request body
@@ -171,10 +232,10 @@ export async function PUT(req: any) {
 		});
 
 		if (!updatedUser || updatedUser.deleted) {
-			return ApiResponseHandler(false, 404, "User not found");
+			return ApiResponseHandler(false, StatusCode.NOT_FOUND, "User not found");
 		}
 
-		return ApiResponseHandler(true, 200, updatedUser);
+		return ApiResponseHandler(true, StatusCode.SUCCESS, updatedUser);
 	} catch (error) {
 		return handleErrorResponse(error);
 	}
@@ -185,11 +246,19 @@ export async function DELETE(req: any) {
 		await connectDB();
 		const token = req.headers.get("token");
 		if (!token) {
-			return ApiResponseHandler(false, 401, "Sign In is required");
+			return ApiResponseHandler(
+				false,
+				StatusCode.UNAUTHORIZED,
+				"Sign In is required"
+			);
 		}
 		const secret = process.env.MANAGER_JWT_SECRET;
 		if (!secret) {
-			return ApiResponseHandler(false, 500, "JWT secret is not defined");
+			return ApiResponseHandler(
+				false,
+				StatusCode.INTERNAL_SERVER_ERROR,
+				"JWT secret is not defined"
+			);
 		}
 		const bearerToken = token.split(" ")[1];
 		const decodedToken = jwt.verify(bearerToken, secret);
@@ -210,10 +279,14 @@ export async function DELETE(req: any) {
 			{ new: true }
 		);
 		if (!deletedUser) {
-			return ApiResponseHandler(false, 404, "User not found");
+			return ApiResponseHandler(false, StatusCode.NOT_FOUND, "User not found");
 		}
 
-		return ApiResponseHandler(true, 200, "User deleted successfully");
+		return ApiResponseHandler(
+			true,
+			StatusCode.SUCCESS,
+			"User deleted successfully"
+		);
 	} catch (error) {
 		return handleErrorResponse(error);
 	}

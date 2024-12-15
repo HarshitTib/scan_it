@@ -9,7 +9,7 @@ export function handleErrorResponse(error: unknown): Response {
 				issues: error.errors, // Provide detailed validation errors
 			}),
 			{
-				status: 400,
+				status: StatusCode.BAD_REQUEST,
 				headers: { "Content-Type": "application/json" },
 			}
 		);
@@ -20,7 +20,7 @@ export function handleErrorResponse(error: unknown): Response {
 			message: error instanceof Error ? error.message : String(error),
 		}),
 		{
-			status: 500,
+			status: StatusCode.INTERNAL_SERVER_ERROR,
 			headers: { "Content-Type": "application/json" },
 		}
 	);

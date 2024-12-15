@@ -5,6 +5,7 @@ import nodemailer from "nodemailer";
 import { connectDB } from "@/app/lib/mongoose";
 import OTPModel from "@/models/otp.model";
 import ApiResponseHandler from "@/app/handlers/apiResponseHandler";
+import { StatusCode } from "@/constants/statusCodes";
 
 const OTP_EXPIRATION_TIME = 15 * 60 * 1000;
 
@@ -32,7 +33,11 @@ export async function POST(req: Request) {
 	console.log("Email:", email);
 
 	if (!email) {
-		return ApiResponseHandler(false, 400, "Email is required");
+		return ApiResponseHandler(
+			false,
+			StatusCode.BAD_REQUEST,
+			"Email is required"
+		);
 	}
 
 	const otp = otpGenerator.generate(6, {
@@ -62,6 +67,10 @@ export async function POST(req: Request) {
 		});
 	} catch (error) {
 		console.error("Error sending email:", error);
-		return ApiResponseHandler(false, 500, "Failed to send OTP email");
+		return ApiResponseHandler(
+			false,
+			StatusCode.INTERNAL_SERVER_ERROR,
+			"Failed to send OTP email"
+		);
 	}
 }

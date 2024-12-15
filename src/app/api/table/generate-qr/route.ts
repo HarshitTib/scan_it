@@ -5,6 +5,7 @@ import TableModel from "@/models/table.model";
 import { handleErrorResponse } from "@/app/handlers/errorHandler";
 import { connectDB } from "@/app/lib/mongoose";
 import ApiResponseHandler from "@/app/handlers/apiResponseHandler";
+import { StatusCode } from "@/constants/statusCodes";
 
 export const tableSchema = z.object({
 	restaurantId: z
@@ -33,7 +34,11 @@ export async function POST(req: any) {
 				tableNumber: tableId,
 			});
 		});
-		return ApiResponseHandler(true, 200, "Tables generated successfully");
+		return ApiResponseHandler(
+			true,
+			StatusCode.SUCCESS,
+			"Tables generated successfully"
+		);
 	} catch (error) {
 		return handleErrorResponse(error);
 	}
