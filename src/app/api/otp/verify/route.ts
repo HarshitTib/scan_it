@@ -1,16 +1,13 @@
-import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { connectDB } from "@/app/lib/mongoose";
 import OTPModel from "@/models/otp.model";
+import ApiResponseHandler from "@/app/handlers/apiResponseHandler";
 
 export async function POST(req: Request) {
 	const { email, otp } = await req.json();
 
 	if (!email || !otp) {
-		return NextResponse.json(
-			{ success: false, message: "Email and OTP are required" },
-			{ status: 400 }
-		);
+		return ApiResponseHandler(false, 400, "Email and OTP are required");
 	}
 	try {
 		await connectDB();
@@ -19,22 +16,14 @@ export async function POST(req: Request) {
 			createdAt: -1,
 		});
 
-		console.log(userOtpRecord);
-
 		if (!userOtpRecord) {
-			return NextResponse.json(
-				{ success: false, message: "No OTP found for this email" },
-				{ status: 404 }
-			);
+			return ApiResponseHandler(false, 404, "No OTP found for this email");
 		}
 
 		const { otpHash, expiresAt } = userOtpRecord;
 
 		if (Date.now() > expiresAt) {
-			return NextResponse.json(
-				{ success: false, message: "OTP expired" },
-				{ status: 400 }
-			);
+			return ApiResponseHandler(false, 400, "OTP expired");
 		}
 
 		const computedHash = crypto
@@ -43,22 +32,13 @@ export async function POST(req: Request) {
 			.digest("hex");
 
 		if (computedHash !== otpHash) {
-			return NextResponse.json(
-				{ success: false, message: "Invalid OTP" },
-				{ status: 400 }
-			);
+			return ApiResponseHandler(false, 400, "Invalid OTP");
 		}
 
-		return NextResponse.json({
-			success: true,
-			message: "OTP verified successfully",
-		});
+		return ApiResponseHandler(true, 200, "OTP verified successfully");
 
 		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	} catch (error) {
-		return NextResponse.json(
-			{ success: false, message: "Error verifying OTP" },
-			{ status: 500 }
-		);
+		return ApiResponseHandler(false, 500, "Error verifying OTP");
 	}
 }

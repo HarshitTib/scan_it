@@ -5,6 +5,7 @@ import z from "zod";
 import jwt from "jsonwebtoken";
 import { handleErrorResponse } from "@/app/handlers/errorHandler";
 import axios from "axios";
+import ApiResponseHandler from "@/app/handlers/apiResponseHandler";
 
 const userSchema = z.object({
 	firstname: z.string().min(2).max(50),
@@ -22,31 +23,13 @@ export async function POST(req: any) {
 		const body = await req.json(); // Accessing body from req
 		const { verificationCode, ...rest } = body;
 		if (verificationCode !== process.env.VERIFICATION_CODE) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "Invalid verification code",
-				}),
-				{
-					status: 401,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 401, "Invalid verification code");
 		}
 
 		const data = userSchema.parse(rest); // Validating request body
 		const existingUser = await User.findOne({ email: data.email });
 		if (existingUser) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "Email already exists",
-				}),
-				{
-					status: 409,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 409, "Email already exists");
 		}
 
 		if (!body.otp) {
@@ -54,15 +37,10 @@ export async function POST(req: any) {
 			await axios.post(`${process.env.URL}/api/otp/generate`, {
 				email: data.email,
 			});
-			return new Response(
-				JSON.stringify({
-					success: true,
-					message: "OTP sent to your email. Please verify.",
-				}),
-				{
-					status: 200,
-					headers: { "Content-Type": "application/json" },
-				}
+			return ApiResponseHandler(
+				true,
+				200,
+				"OTP sent to your email. Please verify."
 			);
 		}
 
@@ -71,53 +49,21 @@ export async function POST(req: any) {
 			email: data.email,
 			otp: data.otp,
 		});
-		console.log(isOtpValid);
 		if (!isOtpValid.data.success) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "Invalid or expired OTP",
-				}),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 400, "Invalid OTP");
 		}
 
 		const response = await User.create(data); // Creating user in DB
 		if (!response) {
-			return new Response(
-				JSON.stringify({ success: false, message: "User not created" }),
-				{
-					status: 500,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 500, "User not created");
 		}
 		const secret = process.env.SUPER_ADMIN_JWT_SECRET;
 		if (!secret) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "JWT secret is not defined",
-				}),
-				{
-					status: 500,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 500, "JWT secret is not defined");
 		}
 		const id = response._id;
 		const token = jwt.sign({ id }, secret, { expiresIn: "6h" });
-
-		return new Response(
-			JSON.stringify({ success: true, message: `Bearer ${token}` }),
-			{
-				status: 200,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return ApiResponseHandler(true, 200, `Bearer ${token}`);
 	} catch (error) {
 		return handleErrorResponse(error);
 	}

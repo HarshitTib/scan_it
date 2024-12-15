@@ -6,6 +6,7 @@ import z from "zod";
 import jwt from "jsonwebtoken";
 import { handleErrorResponse } from "@/app/handlers/errorHandler";
 import axios from "axios";
+import ApiResponseHandler from "@/app/handlers/apiResponseHandler";
 
 const signInSchema = z.object({
 	email: z.string().email(),
@@ -20,38 +21,21 @@ export async function POST(req: any) {
 		await connectDB();
 		const existingUser = await User.findOne({ email: data.email });
 		if (!existingUser || existingUser.deleted) {
-			return new Response(
-				JSON.stringify({ success: false, message: "Email not found" }),
-				{
-					status: 404,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 404, "Email not found");
 		}
 		if (!body.otp) {
 			try {
 				await axios.post(`${process.env.URL}/api/otp/generate`, {
 					email: data.email,
 				});
-				return new Response(
-					JSON.stringify({
-						success: true,
-						message: `OTP sent to the registered mail address: ${data.email}`,
-					}),
-					{
-						status: 200,
-						headers: { "Content-Type": "application/json" },
-					}
+				return ApiResponseHandler(
+					true,
+					200,
+					`OTP sent to the registered mail address: ${data.email}`
 				);
 				// eslint-disable-next-line @typescript-eslint/no-unused-vars
 			} catch (error) {
-				return new Response(
-					JSON.stringify({ success: false, message: "Invalid email" }),
-					{
-						status: 500,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 500, "OTP not generated");
 			}
 		}
 		try {
@@ -60,38 +44,16 @@ export async function POST(req: any) {
 				otp: data.otp,
 			});
 		} catch (error) {
-			return new Response(
-				JSON.stringify({ success: false, message: "Invalid OTP" }),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 400, "Invalid OTP");
 		}
 
 		const secret = process.env.MANAGER_JWT_SECRET;
 		if (!secret) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "JWT secret is not defined",
-				}),
-				{
-					status: 500,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 500, "JWT secret is not defined");
 		}
 		const id = existingUser._id;
 		const token = jwt.sign({ id }, secret, { expiresIn: "6h" });
-
-		return new Response(
-			JSON.stringify({ success: true, message: `Bearer ${token}` }),
-			{
-				status: 200,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return ApiResponseHandler(true, 200, `Bearer ${token}`);
 	} catch (error) {
 		return handleErrorResponse(error);
 	}

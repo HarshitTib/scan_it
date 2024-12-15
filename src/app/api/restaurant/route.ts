@@ -2,11 +2,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import Restaurant from "@/models/restaurant.model";
 import { connectDB } from "@/app/lib/mongoose";
-import z, { ZodError } from "zod";
+import z from "zod";
 import User from "@/models/user.model";
 import jwt from "jsonwebtoken";
 import { handleErrorResponse } from "@/app/handlers/errorHandler";
 import axios from "axios";
+import ApiResponseHandler from "@/app/handlers/apiResponseHandler";
 
 const inputSchema = z.object({
 	owneremail: z.string().email(),
@@ -56,55 +57,25 @@ export async function POST(req: any) {
 		const superAdminToken = req.headers.get("superadmintoken").split(" ")[1];
 		const superadminsecret = process.env.SUPER_ADMIN_JWT_SECRET;
 		if (!superadminsecret) {
-			return new Response(
-				JSON.stringify({ success: false, data: "Server error" }),
-				{
-					status: 500,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 500, "Server error");
 		}
 		const decoded = jwt.verify(superAdminToken, superadminsecret);
 		if (!decoded) {
-			return new Response(
-				JSON.stringify({ success: false, data: "Invalid token" }),
-				{
-					status: 401,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 401, "Invalid token");
 		}
 		const data = inputSchema.parse(body);
 		const owner = await User.findOne({ email: data.owneremail });
 		if (!owner || owner.deleted || owner.role !== "admin") {
-			return new Response(
-				JSON.stringify({ success: false, data: "Owner not found" }),
-				{
-					status: 404,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 404, "Owner not found");
 		}
 		if (!body.otp) {
 			try {
 				await axios.post(`${process.env.URL}/api/otp/generate`, {
 					email: data.owneremail,
 				});
-				return new Response(
-					JSON.stringify({ success: true, data: "OTP sent successfully" }),
-					{
-						status: 200,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(true, 200, "OTP sent successfully");
 			} catch (error) {
-				return new Response(
-					JSON.stringify({ success: false, data: "Error in sending OTP" }),
-					{
-						status: 500,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 500, "Error in sending OTP");
 			}
 		}
 		try {
@@ -113,22 +84,13 @@ export async function POST(req: any) {
 				otp: body.otp,
 			});
 		} catch (error) {
-			return new Response(
-				JSON.stringify({ success: false, data: "Invalid OTP" }),
-				{
-					status: 401,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 401, "Invalid OTP");
 		}
 
 		data.owner = owner.id;
 
 		const response = await Restaurant.create(data);
-		return new Response(JSON.stringify({ success: true, data: response }), {
-			status: 200,
-			headers: { "Content-Type": "application/json" },
-		});
+		return ApiResponseHandler(true, 200, response);
 	} catch (error) {
 		return handleErrorResponse(error);
 	}
@@ -140,36 +102,18 @@ export async function PUT(req: any) {
 		const adminToken = req.headers.get("admintoken")?.split(" ")[1];
 		const adminsecret = process.env.ADMIN_JWT_SECRET;
 		if (!adminsecret) {
-			return new Response(
-				JSON.stringify({ success: false, data: "Server error" }),
-				{
-					status: 500,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 500, "Server error");
 		}
 		const decodedAdmin = jwt.verify(adminToken, adminsecret);
 		if (!decodedAdmin) {
-			return new Response(
-				JSON.stringify({ success: false, data: "Invalid token" }),
-				{
-					status: 401,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 401, "Invalid token");
 		}
 
 		let adminId: string;
 		if (typeof decodedAdmin !== "string" && "id" in decodedAdmin) {
 			adminId = decodedAdmin.id;
 		} else {
-			return new Response(
-				JSON.stringify({ success: false, data: "Invalid token" }),
-				{
-					status: 401,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 401, "Invalid token");
 		}
 
 		const { id, updates } = updateSchema.parse(body);
@@ -177,25 +121,13 @@ export async function PUT(req: any) {
 		// Find the restaurant by ID
 		const restaurant = await Restaurant.findById(id);
 		if (!restaurant || restaurant.owner.toString() !== adminId) {
-			return new Response(
-				JSON.stringify({ success: false, message: "Restaurant not found" }),
-				{
-					status: 404,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 404, "Restaurant not found");
 		}
 		console.log(updates.managerEmail);
 		if (updates.managerEmail) {
 			const manager = await User.findOne({ email: updates.managerEmail });
 			if (!manager) {
-				return new Response(
-					JSON.stringify({ success: false, message: "Manager not found" }),
-					{
-						status: 404,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 404, "Manager not found");
 			}
 
 			if (!restaurant.manager || !restaurant.manager.includes(manager._id)) {
@@ -205,14 +137,7 @@ export async function PUT(req: any) {
 
 		Object.assign(restaurant, updates);
 		const updatedRestaurant = await restaurant.save();
-
-		return new Response(
-			JSON.stringify({ success: true, data: updatedRestaurant }),
-			{
-				status: 200,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return ApiResponseHandler(true, 200, updatedRestaurant);
 	} catch (error: any) {
 		return handleErrorResponse(error);
 	}
@@ -228,25 +153,13 @@ export async function GET(req: any) {
 		if (id) {
 			const restaurant = await Restaurant.findById(id).populate("owner");
 			if (!restaurant || restaurant.deleted) {
-				return new Response(
-					JSON.stringify({ success: false, message: "Restaurant not found" }),
-					{
-						status: 404,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 404, "Restaurant not found");
 			}
-			return new Response(JSON.stringify({ success: true, data: restaurant }), {
-				status: 200,
-				headers: { "Content-Type": "application/json" },
-			});
+			return ApiResponseHandler(true, 200, restaurant);
 		}
 
 		const restaurants = await Restaurant.find().populate("owner");
-		return new Response(JSON.stringify({ success: true, data: restaurants }), {
-			status: 200,
-			headers: { "Content-Type": "application/json" },
-		});
+		return ApiResponseHandler(true, 200, restaurants);
 	} catch (error: any) {
 		return handleErrorResponse(error);
 	}
@@ -261,55 +174,25 @@ export async function DELETE(req: any) {
 			? req.headers.get("admintoken").split(" ")[1]
 			: "";
 		if (!adminToken) {
-			return new Response(
-				JSON.stringify({ success: false, data: "Invalid token" }),
-				{
-					status: 401,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 401, "Invalid token");
 		}
 		const adminsecret = process.env.ADMIN_JWT_SECRET;
 		if (!adminsecret) {
-			return new Response(
-				JSON.stringify({ success: false, data: "Server error" }),
-				{
-					status: 500,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 500, "Server error");
 		}
 		const decodedAdmin = jwt.verify(adminToken, adminsecret);
 		if (!decodedAdmin) {
-			return new Response(
-				JSON.stringify({ success: false, data: "Invalid token" }),
-				{
-					status: 401,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 401, "Invalid token");
 		}
 		let adminid: string;
 		if (typeof decodedAdmin !== "string" && "id" in decodedAdmin) {
 			adminid = decodedAdmin.id;
 		} else {
-			return new Response(
-				JSON.stringify({ success: false, data: "Invalid token" }),
-				{
-					status: 401,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 401, "Invalid token");
 		}
 		const restaurant = await Restaurant.findById(id);
 		if (!restaurant || restaurant.owner.toString() !== adminid) {
-			return new Response(
-				JSON.stringify({ success: false, message: "Restaurant not found" }),
-				{
-					status: 404,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 404, "Restaurant not found");
 		}
 
 		const deletedRestaurant = await Restaurant.findByIdAndUpdate(
@@ -318,24 +201,13 @@ export async function DELETE(req: any) {
 			{ new: true }
 		);
 		if (!deletedRestaurant) {
-			return new Response(
-				JSON.stringify({ success: false, message: "Restaurant not found" }),
-				{
-					status: 404,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 404, "Restaurant not found");
 		}
 
-		return new Response(
-			JSON.stringify({
-				success: true,
-				data: `${deletedRestaurant.name} is deleted`,
-			}),
-			{
-				status: 200,
-				headers: { "Content-Type": "application/json" },
-			}
+		return ApiResponseHandler(
+			true,
+			200,
+			`${deletedRestaurant.name} is deleted`
 		);
 	} catch (error) {
 		return handleErrorResponse(error);

@@ -6,6 +6,7 @@ import z from "zod";
 import jwt from "jsonwebtoken";
 import { handleErrorResponse } from "@/app/handlers/errorHandler";
 import axios from "axios";
+import ApiResponseHandler from "@/app/handlers/apiResponseHandler";
 
 // Updated phone validation to handle phone numbers as strings
 const userSchema = z.object({
@@ -37,28 +38,10 @@ export async function POST(req: any) {
 		console.log(admintoken);
 		const adminsecret = process.env.ADMIN_JWT_SECRET;
 		if (!admintoken) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "Admin Token is required",
-				}),
-				{
-					status: 401,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 401, "Admin Token is required");
 		}
 		if (!adminsecret) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "Admin JWT secret is not defined",
-				}),
-				{
-					status: 500,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 500, "Admin JWT secret is not defined");
 		}
 
 		const token1 = admintoken.split(" ")[1];
@@ -66,68 +49,33 @@ export async function POST(req: any) {
 
 		const adminid = jwt.verify(token1, adminsecret);
 		if (!adminid) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "Invalid Admin Token",
-				}),
-				{
-					status: 401,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 401, "Invalid Admin Token");
 		} else {
 			const id = (adminid as jwt.JwtPayload).id;
 			console.log(id);
 			const user = await User.findById(id);
 			if (!user || user.deleted) {
-				return new Response(
-					JSON.stringify({ success: false, message: "Admin not found" }),
-					{
-						status: 404,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 404, "Admin not found");
 			}
 		}
 
 		const data = userSchema.parse(body); // Validating request body
 		const existingUser = await User.findOne({ email: data.email });
 		if (existingUser) {
-			return new Response(
-				JSON.stringify({ success: false, message: "Email already exists" }),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 400, "Email already exists");
 		}
 		if (!body.otp) {
 			try {
-				const generateOTP = await axios.post(
-					`${process.env.URL}/api/otp/generate`,
-					{
-						email: data.email,
-					}
-				);
-				return new Response(
-					JSON.stringify({
-						success: true,
-						message: "OTP sent to your email. Please verify.",
-					}),
-					{
-						status: 200,
-						headers: { "Content-Type": "application/json" },
-					}
+				await axios.post(`${process.env.URL}/api/otp/generate`, {
+					email: data.email,
+				});
+				return ApiResponseHandler(
+					true,
+					200,
+					"OTP sent to your email. Please verify."
 				);
 			} catch (error) {
-				return new Response(
-					JSON.stringify({ success: false, message: "OTP not generated" }),
-					{
-						status: 500,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 500, "OTP not generated");
 			}
 		}
 
@@ -137,48 +85,20 @@ export async function POST(req: any) {
 				otp: data.otp,
 			});
 		} catch (error) {
-			return new Response(
-				JSON.stringify({ success: false, message: "OTP not verified" }),
-				{
-					status: 500,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 400, "OTP not verified");
 		}
 
 		const response = await User.create(data); // Creating user in DB
 		if (!response) {
-			return new Response(
-				JSON.stringify({ success: false, message: "User not created" }),
-				{
-					status: 500,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 500, "User not created");
 		}
 		const secret = process.env.MANAGER_JWT_SECRET;
 		if (!secret) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "JWT secret is not defined",
-				}),
-				{
-					status: 500,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 500, "JWT secret is not defined");
 		}
 		const id = response._id;
 		const token = jwt.sign({ id }, secret, { expiresIn: "6h" });
-
-		return new Response(
-			JSON.stringify({ success: true, message: `Bearer ${token}` }),
-			{
-				status: 200,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return ApiResponseHandler(true, 200, `Bearer ${token}`);
 	} catch (error) {
 		return handleErrorResponse(error);
 	}
@@ -190,26 +110,11 @@ export async function GET(req: any) {
 		const token = req.headers.get("token");
 		console.log(token);
 		if (!token) {
-			return new Response(
-				JSON.stringify({ success: false, message: "Sign In is required" }),
-				{
-					status: 401,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 401, "Sign In is required");
 		}
 		const secret = process.env.MANAGER_JWT_SECRET;
 		if (!secret) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "JWT secret is not defined",
-				}),
-				{
-					status: 500,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 500, "JWT secret is not defined");
 		}
 		const bearerToken = token.split(" ")[1];
 		const decodedToken = jwt.verify(bearerToken, secret);
@@ -223,28 +128,13 @@ export async function GET(req: any) {
 			try {
 				idSchema.parse(id);
 			} catch (error) {
-				return new Response(
-					JSON.stringify({ success: false, message: error }),
-					{
-						status: 400,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 400, error);
 			}
 			const user = await User.findById(id);
 			if (!user || user.deleted) {
-				return new Response(
-					JSON.stringify({ success: false, message: "User not found" }),
-					{
-						status: 404,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 404, "User not found");
 			}
-			return new Response(JSON.stringify({ success: true, message: user }), {
-				status: 200,
-				headers: { "Content-Type": "application/json" },
-			});
+			return ApiResponseHandler(true, 200, user);
 		}
 	} catch (error) {
 		return handleErrorResponse(error);
@@ -257,26 +147,11 @@ export async function PUT(req: any) {
 		const body = await req.json();
 		const token = req.headers.get("token");
 		if (!token) {
-			return new Response(
-				JSON.stringify({ success: false, message: "Sign In is required" }),
-				{
-					status: 401,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 401, "Sign In is required");
 		}
 		const secret = process.env.MANAGER_JWT_SECRET;
 		if (!secret) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "JWT secret is not defined",
-				}),
-				{
-					status: 500,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 500, "JWT secret is not defined");
 		}
 		const bearerToken = token.split(" ")[1];
 		const decodedToken = jwt.verify(bearerToken, secret);
@@ -286,13 +161,7 @@ export async function PUT(req: any) {
 				: null;
 
 		if (!id) {
-			return new Response(
-				JSON.stringify({ success: false, message: "User ID is required" }),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 400, "User ID is required");
 		}
 
 		const data = updateSchema.parse(body); // Validating request body
@@ -302,22 +171,10 @@ export async function PUT(req: any) {
 		});
 
 		if (!updatedUser || updatedUser.deleted) {
-			return new Response(
-				JSON.stringify({ success: false, message: "User not found" }),
-				{
-					status: 404,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 404, "User not found");
 		}
 
-		return new Response(
-			JSON.stringify({ success: true, message: updatedUser }),
-			{
-				status: 200,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return ApiResponseHandler(true, 200, updatedUser);
 	} catch (error) {
 		return handleErrorResponse(error);
 	}
@@ -328,26 +185,11 @@ export async function DELETE(req: any) {
 		await connectDB();
 		const token = req.headers.get("token");
 		if (!token) {
-			return new Response(
-				JSON.stringify({ success: false, message: "Sign In is required" }),
-				{
-					status: 401,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 401, "Sign In is required");
 		}
 		const secret = process.env.MANAGER_JWT_SECRET;
 		if (!secret) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "JWT secret is not defined",
-				}),
-				{
-					status: 500,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 500, "JWT secret is not defined");
 		}
 		const bearerToken = token.split(" ")[1];
 		const decodedToken = jwt.verify(bearerToken, secret);
@@ -368,22 +210,10 @@ export async function DELETE(req: any) {
 			{ new: true }
 		);
 		if (!deletedUser) {
-			return new Response(
-				JSON.stringify({ success: false, message: "User not found" }),
-				{
-					status: 404,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 404, "User not found");
 		}
 
-		return new Response(
-			JSON.stringify({ success: true, message: "User deleted successfully" }),
-			{
-				status: 200,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return ApiResponseHandler(true, 200, "User deleted successfully");
 	} catch (error) {
 		return handleErrorResponse(error);
 	}

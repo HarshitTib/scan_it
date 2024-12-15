@@ -2,10 +2,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import FoodItem from "@/models/fooditem.model";
 import { connectDB } from "@/app/lib/mongoose";
-import z, { ZodError } from "zod";
+import z from "zod";
 import Restaurant from "@/models/restaurant.model";
 import { handleErrorResponse } from "@/app/handlers/errorHandler";
 import jwt from "jsonwebtoken";
+import ApiResponseHandler from "@/app/handlers/apiResponseHandler";
 
 const inputSchema = z.object({
 	title: z.string().min(2).max(50),
@@ -47,7 +48,6 @@ const getSchema = z.object({
 		.optional(),
 });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function POST(req: any) {
 	try {
 		await connectDB();
@@ -55,70 +55,34 @@ export async function POST(req: any) {
 		const { restaurant, ...rest } = inputSchema.parse(body);
 		const restuarantResponse = await Restaurant.findById(restaurant);
 		if (!restuarantResponse || restuarantResponse.deleted) {
-			return new Response(
-				JSON.stringify({ success: false, data: "Restaurant does not exist" }),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 400, "Restaurant does not exist");
 		}
 		const admintoken = req.headers.get("admintoken");
 		const managertoken = req.headers.get("managertoken");
 		if (!admintoken && !managertoken) {
-			return new Response(
-				JSON.stringify({ success: false, data: "Token should be provided" }),
-				{
-					status: 401,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 401, "Token should be provided");
 		}
 		if (admintoken) {
 			const secret = process.env.ADMIN_JWT_SECRET;
 			if (!secret) {
-				return new Response(
-					JSON.stringify({ success: false, data: "Server Error" }),
-					{
-						status: 500,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 500, "Server Error");
 			}
 			const token = admintoken.split(" ")[1];
 			const adminid = jwt.verify(token, secret);
 			const id = (adminid as jwt.JwtPayload).id;
 			if (!adminid || id !== restuarantResponse.owner.toString()) {
-				return new Response(
-					JSON.stringify({ success: false, data: "Unauthorized" }),
-					{
-						status: 401,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 401, "Unauthorized");
 			}
 		} else if (managertoken) {
 			const secret = process.env.MANAGER_JWT_SECRET;
 			if (!secret) {
-				return new Response(
-					JSON.stringify({ success: false, data: "Server Error" }),
-					{
-						status: 500,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 500, "Server Error");
 			}
 			const token = managertoken.split(" ")[1];
 			const managerid = jwt.verify(token, secret);
 			const id = (managerid as jwt.JwtPayload).id;
 			if (!managerid || !restuarantResponse.manager.includes(id)) {
-				return new Response(
-					JSON.stringify({ success: false, data: "Unauthorized" }),
-					{
-						status: 401,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 401, "Unauthorized");
 			}
 		}
 		const foodItem = await FoodItem.findOne({
@@ -126,22 +90,14 @@ export async function POST(req: any) {
 			restaurant: restaurant,
 		});
 		if (foodItem) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					data: `FoodItem already exists for a given title ${rest.title}`,
-				}),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
+			return ApiResponseHandler(
+				false,
+				400,
+				`FoodItem already exists for a given title ${rest.title}`
 			);
 		}
 		const newFoodItem = await FoodItem.create(body);
-		return new Response(JSON.stringify({ success: true, data: newFoodItem }), {
-			status: 200,
-			headers: { "Content-Type": "application/json" },
-		});
+		return ApiResponseHandler(true, 200, newFoodItem);
 	} catch (error: any) {
 		return handleErrorResponse(error);
 	}
@@ -157,43 +113,19 @@ export async function PUT(req: any) {
 		const foodItem = await FoodItem.findById(id).populate("restaurant");
 		console.log(foodItem);
 		if (!foodItem || foodItem.deleted) {
-			return new Response(
-				JSON.stringify({ success: false, data: "FoodItem does not exist" }),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 400, "FoodItem does not exist");
 		}
 		if (!foodItem.restaurant || foodItem.restaurant.deleted) {
-			return new Response(
-				JSON.stringify({ success: false, data: "Restaurant does not exist" }),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 400, "Restaurant does not exist");
 		}
 		if (!admintoken && !managertoken) {
-			return new Response(
-				JSON.stringify({ success: false, data: "Token should be provided" }),
-				{
-					status: 401,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 401, "Token should be provided");
 		}
 
 		if (admintoken) {
 			const secret = process.env.ADMIN_JWT_SECRET;
 			if (!secret) {
-				return new Response(
-					JSON.stringify({ success: false, data: "Server Error" }),
-					{
-						status: 500,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 500, "Server Error");
 			}
 			const token = admintoken.split(" ")[1];
 			const adminid = jwt.verify(token, secret);
@@ -201,38 +133,20 @@ export async function PUT(req: any) {
 			console.log(id);
 			console.log(foodItem.restaurant.owner);
 			if (!adminid || id !== foodItem.restaurant.owner.toString()) {
-				return new Response(
-					JSON.stringify({ success: false, data: "Unauthorized" }),
-					{
-						status: 401,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 401, "Unauthorized");
 			}
 		}
 
 		if (managertoken) {
 			const secret = process.env.MANAGER_JWT_SECRET;
 			if (!secret) {
-				return new Response(
-					JSON.stringify({ success: false, data: "Server Error" }),
-					{
-						status: 500,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 500, "Server Error");
 			}
 			const token = managertoken.split(" ")[1];
 			const managerid = jwt.verify(token, secret);
 			const id = (managerid as jwt.JwtPayload).id;
 			if (!managerid || !foodItem.restaurant.manager.includes(id)) {
-				return new Response(
-					JSON.stringify({ success: false, data: "Unauthorized" }),
-					{
-						status: 401,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 401, "Unauthorized");
 			}
 		}
 
@@ -241,28 +155,17 @@ export async function PUT(req: any) {
 			restaurant: foodItem.restaurant._id,
 		});
 		if (foodItemFind) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					data: `FoodItem already exists for a given title ${updates.title}`,
-				}),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
+			return ApiResponseHandler(
+				false,
+				400,
+				`FoodItem already exists for a given title ${updates.title}`
 			);
 		}
 
 		const updatedFoodItem = await FoodItem.findByIdAndUpdate(id, updates, {
 			new: true,
 		});
-		return new Response(
-			JSON.stringify({ success: true, data: updatedFoodItem }),
-			{
-				status: 200,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return ApiResponseHandler(true, 200, updatedFoodItem);
 	} catch (error: any) {
 		return handleErrorResponse(error);
 	}
@@ -277,18 +180,9 @@ export async function GET(req: any) {
 		if (id) {
 			const foodItem = await FoodItem.findById(id).populate("restaurant");
 			if (!foodItem || foodItem.deleted) {
-				return new Response(
-					JSON.stringify({ success: false, data: "FoodItem does not exist" }),
-					{
-						status: 400,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 400, "FoodItem does not exist");
 			}
-			return new Response(JSON.stringify({ success: true, data: foodItem }), {
-				status: 200,
-				headers: { "Content-Type": "application/json" },
-			});
+			return ApiResponseHandler(true, 200, foodItem);
 		}
 		if (restaurant) {
 			const foodItems = await FoodItem.find({ restaurant });
@@ -298,30 +192,16 @@ export async function GET(req: any) {
 				);
 			});
 			if (!foodItems || foodItems.length === 0) {
-				return new Response(
-					JSON.stringify({
-						success: false,
-						data: `FoodItems does not exist for a given restaurant ${restaurant}`,
-					}),
-					{
-						status: 400,
-						headers: { "Content-Type": "application/json" },
-					}
+				return ApiResponseHandler(
+					false,
+					400,
+					`FoodItems does not exist for a given restaurant ${restaurant}`
 				);
 			}
-			return new Response(
-				JSON.stringify({ success: true, data: foodItemsWhichIsNotDeleted }),
-				{
-					status: 200,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(true, 200, foodItemsWhichIsNotDeleted);
 		}
 		const foodItems = await FoodItem.find();
-		return new Response(JSON.stringify({ success: true, data: foodItems }), {
-			status: 200,
-			headers: { "Content-Type": "application/json" },
-		});
+		return ApiResponseHandler(true, 200, foodItems);
 	} catch (error: any) {
 		return handleErrorResponse(error);
 	}
@@ -337,78 +217,36 @@ export async function DELETE(req: any) {
 		const foodItem = await FoodItem.findById(id).populate("restaurant");
 		console.log(foodItem);
 		if (!foodItem || foodItem.deleted) {
-			return new Response(
-				JSON.stringify({ success: false, data: "FoodItem does not exist" }),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 400, "FoodItem does not exist");
 		}
 		if (!foodItem.restaurant || foodItem.restaurant.deleted) {
-			return new Response(
-				JSON.stringify({ success: false, data: "Restaurant does not exist" }),
-				{
-					status: 400,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 400, "Restaurant does not exist");
 		}
 		if (!admintoken && !managertoken) {
-			return new Response(
-				JSON.stringify({ success: false, data: "Token should be provided" }),
-				{
-					status: 401,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 401, "Token should be provided");
 		}
 		if (admintoken) {
 			const secret = process.env.ADMIN_JWT_SECRET;
 			if (!secret) {
-				return new Response(
-					JSON.stringify({ success: false, data: "Server Error" }),
-					{
-						status: 500,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 500, "Server Error");
 			}
 			const token = admintoken.split(" ")[1];
 			const adminid = jwt.verify(token, secret);
 			const id = (adminid as jwt.JwtPayload).id;
 			if (!adminid || id !== foodItem.restaurant.owner.toString()) {
-				return new Response(
-					JSON.stringify({ success: false, data: "Unauthorized" }),
-					{
-						status: 401,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 401, "Unauthorized");
 			}
 		}
 		if (managertoken) {
 			const secret = process.env.MANAGER_JWT_SECRET;
 			if (!secret) {
-				return new Response(
-					JSON.stringify({ success: false, data: "Server Error" }),
-					{
-						status: 500,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 500, "Server Error");
 			}
 			const token = managertoken.split(" ")[1];
 			const managerid = jwt.verify(token, secret);
 			const id = (managerid as jwt.JwtPayload).id;
 			if (!managerid || !foodItem.restaurant.manager.includes(id)) {
-				return new Response(
-					JSON.stringify({ success: false, data: "Unauthorized" }),
-					{
-						status: 401,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 401, "Unauthorized");
 			}
 		}
 		const updatedFoodItem = await FoodItem.findByIdAndUpdate(
@@ -416,13 +254,7 @@ export async function DELETE(req: any) {
 			{ deleted: true },
 			{ new: true }
 		);
-		return new Response(
-			JSON.stringify({ success: true, data: updatedFoodItem }),
-			{
-				status: 200,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return ApiResponseHandler(true, 200, updatedFoodItem);
 	} catch (error: any) {
 		return handleErrorResponse(error);
 	}

@@ -5,6 +5,7 @@ import z from "zod";
 import jwt from "jsonwebtoken";
 import { handleErrorResponse } from "@/app/handlers/errorHandler";
 import axios from "axios";
+import ApiResponseHandler from "@/app/handlers/apiResponseHandler";
 
 const signInSchema = z.object({
 	email: z.string().email(),
@@ -19,13 +20,7 @@ export async function POST(req: any) {
 
 		const response = await User.findOne({ email: data.email });
 		if (!response || response.deleted) {
-			return new Response(
-				JSON.stringify({ success: false, message: "User not present" }),
-				{
-					status: 500,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 500, "User not present");
 		}
 
 		if (!data.otp) {
@@ -33,15 +28,10 @@ export async function POST(req: any) {
 				email: data.email,
 			});
 
-			return new Response(
-				JSON.stringify({
-					success: true,
-					message: "OTP sent to your email. Please verify.",
-				}),
-				{
-					status: 200,
-					headers: { "Content-Type": "application/json" },
-				}
+			return ApiResponseHandler(
+				true,
+				200,
+				"OTP sent to your email. Please verify."
 			);
 		}
 
@@ -54,39 +44,17 @@ export async function POST(req: any) {
 				});
 				// eslint-disable-next-line @typescript-eslint/no-unused-vars
 			} catch (error) {
-				return new Response(
-					JSON.stringify({ success: false, message: "Invalid OTP" }),
-					{
-						status: 400,
-						headers: { "Content-Type": "application/json" },
-					}
-				);
+				return ApiResponseHandler(false, 400, "Invalid OTP");
 			}
 		}
 
 		const secret = process.env.SUPER_ADMIN_JWT_SECRET;
 		if (!secret) {
-			return new Response(
-				JSON.stringify({
-					success: false,
-					message: "JWT secret is not defined",
-				}),
-				{
-					status: 500,
-					headers: { "Content-Type": "application/json" },
-				}
-			);
+			return ApiResponseHandler(false, 500, "JWT secret is not defined");
 		}
 		const id = response._id;
 		const token = jwt.sign({ id }, secret, { expiresIn: "6h" });
-
-		return new Response(
-			JSON.stringify({ success: true, message: `Bearer ${token}` }),
-			{
-				status: 200,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
+		return ApiResponseHandler(true, 200, `Bearer ${token}`);
 	} catch (error) {
 		return handleErrorResponse(error);
 	}
