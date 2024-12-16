@@ -8,6 +8,8 @@ import { handleErrorResponse } from "@/app/handlers/errorHandler";
 import jwt from "jsonwebtoken";
 import ApiResponseHandler from "@/app/handlers/apiResponseHandler";
 import { StatusCode } from "@/constants/statusCodes";
+import { verifyToken } from "@/app/handlers/verifyToken";
+import { UserRole } from "@/constants/userRole";
 
 const inputSchema = z.object({
 	title: z.string().min(2).max(50),
@@ -38,17 +40,6 @@ const deleteSchema = z.object({
 	id: z.string().regex(/^[a-fA-F0-9]{24}$/, "Invalid ObjectId format"),
 });
 
-const getSchema = z.object({
-	id: z
-		.string()
-		.regex(/^[a-fA-F0-9]{24}$/, "Invalid ObjectId format")
-		.optional(),
-	restaurant: z
-		.string()
-		.regex(/^[a-fA-F0-9]{24}$/, "Invalid ObjectId format")
-		.optional(),
-});
-
 export async function POST(req: any) {
 	try {
 		await connectDB();
@@ -62,53 +53,32 @@ export async function POST(req: any) {
 				"Restaurant does not exist"
 			);
 		}
-		const admintoken = req.headers.get("admintoken");
-		const managertoken = req.headers.get("managertoken");
-		if (!admintoken && !managertoken) {
-			return ApiResponseHandler(
-				false,
-				StatusCode.UNAUTHORIZED,
-				"Token should be provided"
-			);
+		let userInfo;
+		const authorization = req.headers.get("authorization");
+		try {
+			userInfo = verifyToken(authorization);
+		} catch (error: any) {
+			return ApiResponseHandler(false, StatusCode.UNAUTHORIZED, error.message);
 		}
-		if (admintoken) {
-			const secret = process.env.ADMIN_JWT_SECRET;
-			if (!secret) {
-				return ApiResponseHandler(
-					false,
-					StatusCode.INTERNAL_SERVER_ERROR,
-					"Server Error"
-				);
-			}
-			const token = admintoken.split(" ")[1];
-			const adminid = jwt.verify(token, secret);
-			const id = (adminid as jwt.JwtPayload).id;
-			if (!adminid || id !== restuarantResponse.owner.toString()) {
+		const { id, role } = userInfo;
+		if (role == UserRole.ADMIN) {
+			if (id !== restuarantResponse.owner.toString()) {
 				return ApiResponseHandler(
 					false,
 					StatusCode.UNAUTHORIZED,
-					"Unauthorized"
+					"The following admin is not the owner of the restaurant"
 				);
 			}
-		} else if (managertoken) {
-			const secret = process.env.MANAGER_JWT_SECRET;
-			if (!secret) {
-				return ApiResponseHandler(
-					false,
-					StatusCode.INTERNAL_SERVER_ERROR,
-					"Server Error"
-				);
-			}
-			const token = managertoken.split(" ")[1];
-			const managerid = jwt.verify(token, secret);
-			const id = (managerid as jwt.JwtPayload).id;
-			if (!managerid || !restuarantResponse.manager.includes(id)) {
+		} else if (role == UserRole.MANAGER) {
+			if (!restuarantResponse.manager.includes(id)) {
 				return ApiResponseHandler(
 					false,
 					StatusCode.UNAUTHORIZED,
-					"Unauthorized"
+					"The following manager is not the manager of the restaurant"
 				);
 			}
+		} else {
+			return ApiResponseHandler(false, StatusCode.UNAUTHORIZED, "Unauthorized");
 		}
 		const foodItem = await FoodItem.findOne({
 			title: rest.title,
@@ -132,11 +102,9 @@ export async function PUT(req: any) {
 	try {
 		await connectDB();
 		const body = await req.json();
-		const admintoken = req.headers.get("admintoken");
-		const managertoken = req.headers.get("managertoken");
+		const authorization = req.headers.get("authorization");
 		const { id, updates } = updateSchema.parse(body);
 		const foodItem = await FoodItem.findById(id).populate("restaurant");
-		console.log(foodItem);
 		if (!foodItem || foodItem.deleted) {
 			return ApiResponseHandler(
 				false,
@@ -151,58 +119,31 @@ export async function PUT(req: any) {
 				"Restaurant does not exist"
 			);
 		}
-		if (!admintoken && !managertoken) {
-			return ApiResponseHandler(
-				false,
-				StatusCode.UNAUTHORIZED,
-				"Token should be provided"
-			);
+		let userInfo;
+		try {
+			userInfo = verifyToken(authorization);
+		} catch (error: any) {
+			return ApiResponseHandler(false, StatusCode.UNAUTHORIZED, error.message);
 		}
-
-		if (admintoken) {
-			const secret = process.env.ADMIN_JWT_SECRET;
-			if (!secret) {
-				return ApiResponseHandler(
-					false,
-					StatusCode.INTERNAL_SERVER_ERROR,
-					"Server Error"
-				);
-			}
-			const token = admintoken.split(" ")[1];
-			const adminid = jwt.verify(token, secret);
-			const id = (adminid as jwt.JwtPayload).id;
-			console.log(id);
-			console.log(foodItem.restaurant.owner);
-			if (!adminid || id !== foodItem.restaurant.owner.toString()) {
+		const { id: userId, role } = userInfo;
+		if (role == UserRole.ADMIN) {
+			if (userId !== foodItem.restaurant.owner.toString()) {
 				return ApiResponseHandler(
 					false,
 					StatusCode.UNAUTHORIZED,
-					"Unauthorized"
+					"The following admin is not the owner of the restaurant"
 				);
 			}
-		}
-
-		if (managertoken) {
-			const secret = process.env.MANAGER_JWT_SECRET;
-			if (!secret) {
-				return ApiResponseHandler(
-					false,
-					StatusCode.INTERNAL_SERVER_ERROR,
-					"Server Error"
-				);
-			}
-			console.log(secret);
-			const token = managertoken.split(" ")[1];
-			const managerid = jwt.verify(token, secret);
-			const id = (managerid as jwt.JwtPayload).id;
-			console.log(id);
-			if (!managerid || !foodItem.restaurant.manager.includes(id)) {
+		} else if (role == UserRole.MANAGER) {
+			if (!foodItem.restaurant.manager.includes(userId)) {
 				return ApiResponseHandler(
 					false,
 					StatusCode.UNAUTHORIZED,
-					"Unauthorized"
+					"The following manager is not the manager of the restaurant "
 				);
 			}
+		} else {
+			return ApiResponseHandler(false, StatusCode.UNAUTHORIZED, "Unauthorized");
 		}
 
 		const foodItemFind = await FoodItem.findOne({
@@ -274,8 +215,7 @@ export async function DELETE(req: any) {
 	try {
 		await connectDB();
 		const body = await req.json();
-		const admintoken = req.headers.get("admintoken");
-		const managertoken = req.headers.get("managertoken");
+		const authorization = req.headers.get("authorization");
 		const { id } = deleteSchema.parse(body);
 		const foodItem = await FoodItem.findById(id).populate("restaurant");
 		console.log(foodItem);
@@ -293,52 +233,31 @@ export async function DELETE(req: any) {
 				"Restaurant does not exist"
 			);
 		}
-		if (!admintoken && !managertoken) {
-			return ApiResponseHandler(
-				false,
-				StatusCode.UNAUTHORIZED,
-				"Token should be provided"
-			);
+		let userInfo;
+		try {
+			userInfo = verifyToken(authorization);
+		} catch (error: any) {
+			return ApiResponseHandler(false, StatusCode.UNAUTHORIZED, error.message);
 		}
-		if (admintoken) {
-			const secret = process.env.ADMIN_JWT_SECRET;
-			if (!secret) {
-				return ApiResponseHandler(
-					false,
-					StatusCode.INTERNAL_SERVER_ERROR,
-					"Server Error"
-				);
-			}
-			const token = admintoken.split(" ")[1];
-			const adminid = jwt.verify(token, secret);
-			const id = (adminid as jwt.JwtPayload).id;
-			if (!adminid || id !== foodItem.restaurant.owner.toString()) {
+		const { id: userId, role } = userInfo;
+		if (role == UserRole.ADMIN) {
+			if (userId !== foodItem.restaurant.owner.toString()) {
 				return ApiResponseHandler(
 					false,
 					StatusCode.UNAUTHORIZED,
-					"Unauthorized"
+					"The following admin is not the owner of the restaurant"
 				);
 			}
-		}
-		if (managertoken) {
-			const secret = process.env.MANAGER_JWT_SECRET;
-			if (!secret) {
-				return ApiResponseHandler(
-					false,
-					StatusCode.INTERNAL_SERVER_ERROR,
-					"Server Error"
-				);
-			}
-			const token = managertoken.split(" ")[1];
-			const managerid = jwt.verify(token, secret);
-			const id = (managerid as jwt.JwtPayload).id;
-			if (!managerid || !foodItem.restaurant.manager.includes(id)) {
+		} else if (role == UserRole.MANAGER) {
+			if (!foodItem.restaurant.manager.includes(userId)) {
 				return ApiResponseHandler(
 					false,
 					StatusCode.UNAUTHORIZED,
-					"Unauthorized"
+					"The following manager is not the manager of the restaurant"
 				);
 			}
+		} else {
+			return ApiResponseHandler(false, StatusCode.UNAUTHORIZED, "Unauthorized");
 		}
 		const updatedFoodItem = await FoodItem.findByIdAndUpdate(
 			id,

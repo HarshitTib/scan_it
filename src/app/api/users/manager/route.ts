@@ -8,6 +8,9 @@ import { handleErrorResponse } from "@/app/handlers/errorHandler";
 import axios from "axios";
 import ApiResponseHandler from "@/app/handlers/apiResponseHandler";
 import { StatusCode } from "@/constants/statusCodes";
+import { verifyToken } from "@/app/handlers/verifyToken";
+import { UserRole } from "@/constants/userRole";
+import { ExpiryTime } from "@/constants/expiryTime";
 
 // Updated phone validation to handle phone numbers as strings
 const userSchema = z.object({
@@ -35,45 +38,25 @@ export async function POST(req: any) {
 	try {
 		await connectDB();
 		const body = await req.json(); // Accessing body from req
-		const admintoken = req.headers.get("admintoken");
-		console.log(admintoken);
-		const adminsecret = process.env.ADMIN_JWT_SECRET;
-		if (!admintoken) {
+		const authorization = req.headers.get("authorization");
+		let userInfo;
+		try {
+			userInfo = verifyToken(authorization);
+		} catch (error: any) {
+			return ApiResponseHandler(false, StatusCode.UNAUTHORIZED, error.message);
+		}
+		const { id: adminId, role } = userInfo;
+		if (role !== UserRole.ADMIN) {
 			return ApiResponseHandler(
 				false,
 				StatusCode.UNAUTHORIZED,
-				"Admin Token is required"
-			);
-		}
-		if (!adminsecret) {
-			return ApiResponseHandler(
-				false,
-				StatusCode.INTERNAL_SERVER_ERROR,
-				"Admin JWT secret is not defined"
+				"Admin role is needed"
 			);
 		}
 
-		const token1 = admintoken.split(" ")[1];
-		console.log(token1);
-
-		const adminid = jwt.verify(token1, adminsecret);
-		if (!adminid) {
-			return ApiResponseHandler(
-				false,
-				StatusCode.UNAUTHORIZED,
-				"Invalid Admin Token"
-			);
-		} else {
-			const id = (adminid as jwt.JwtPayload).id;
-			console.log(id);
-			const user = await User.findById(id);
-			if (!user || user.deleted) {
-				return ApiResponseHandler(
-					false,
-					StatusCode.NOT_FOUND,
-					"Admin not found"
-				);
-			}
+		const user = await User.findById(adminId);
+		if (!user || user.deleted) {
+			return ApiResponseHandler(false, StatusCode.NOT_FOUND, "Admin not found");
 		}
 
 		const data = userSchema.parse(body); // Validating request body
@@ -134,7 +117,7 @@ export async function POST(req: any) {
 			);
 		}
 		const id = response._id;
-		const token = jwt.sign({ id }, secret, { expiresIn: "6h" });
+		const token = jwt.sign({ id }, secret, { expiresIn: ExpiryTime.JWT });
 		return ApiResponseHandler(true, StatusCode.SUCCESS, `Bearer ${token}`);
 	} catch (error) {
 		return handleErrorResponse(error);
@@ -144,32 +127,23 @@ export async function POST(req: any) {
 export async function GET(req: any) {
 	try {
 		await connectDB();
-		const token = req.headers.get("token");
-		console.log(token);
-		if (!token) {
+		const authorization = req.headers.get("authorization");
+		let userInfo;
+		try {
+			userInfo = verifyToken(authorization);
+		} catch (error: any) {
+			return ApiResponseHandler(false, StatusCode.UNAUTHORIZED, error.message);
+		}
+		const { id, role } = userInfo;
+		if (role !== UserRole.MANAGER) {
 			return ApiResponseHandler(
 				false,
 				StatusCode.UNAUTHORIZED,
-				"Sign In is required"
+				"Manager role is needed"
 			);
 		}
-		const secret = process.env.MANAGER_JWT_SECRET;
-		if (!secret) {
-			return ApiResponseHandler(
-				false,
-				StatusCode.INTERNAL_SERVER_ERROR,
-				"JWT secret is not defined"
-			);
-		}
-		const bearerToken = token.split(" ")[1];
-		const decodedToken = jwt.verify(bearerToken, secret);
-		const id =
-			typeof decodedToken !== "string" && "id" in decodedToken
-				? decodedToken.id
-				: null;
 
 		if (id) {
-			// Validate ID and fetch single user
 			try {
 				idSchema.parse(id);
 			} catch (error) {
@@ -194,28 +168,21 @@ export async function PUT(req: any) {
 	try {
 		await connectDB();
 		const body = await req.json();
-		const token = req.headers.get("token");
-		if (!token) {
+		const authorization = req.headers.get("authorization");
+		let userInfo;
+		try {
+			userInfo = verifyToken(authorization);
+		} catch (error: any) {
+			return ApiResponseHandler(false, StatusCode.UNAUTHORIZED, error.message);
+		}
+		const { id, role } = userInfo;
+		if (role !== UserRole.MANAGER) {
 			return ApiResponseHandler(
 				false,
 				StatusCode.UNAUTHORIZED,
-				"Sign In is required"
+				"Manager role is needed"
 			);
 		}
-		const secret = process.env.MANAGER_JWT_SECRET;
-		if (!secret) {
-			return ApiResponseHandler(
-				false,
-				StatusCode.INTERNAL_SERVER_ERROR,
-				"JWT secret is not defined"
-			);
-		}
-		const bearerToken = token.split(" ")[1];
-		const decodedToken = jwt.verify(bearerToken, secret);
-		const id =
-			typeof decodedToken !== "string" && "id" in decodedToken
-				? decodedToken.id
-				: null;
 
 		if (!id) {
 			return ApiResponseHandler(
@@ -244,33 +211,21 @@ export async function PUT(req: any) {
 export async function DELETE(req: any) {
 	try {
 		await connectDB();
-		const token = req.headers.get("token");
-		if (!token) {
+		const authorization = req.headers.get("authorization");
+		let userInfo;
+		try {
+			userInfo = verifyToken(authorization);
+		} catch (error: any) {
+			return ApiResponseHandler(false, StatusCode.UNAUTHORIZED, error.message);
+		}
+		const { id, role } = userInfo;
+		if (role !== UserRole.MANAGER) {
 			return ApiResponseHandler(
 				false,
 				StatusCode.UNAUTHORIZED,
-				"Sign In is required"
+				"Manager role is needed"
 			);
 		}
-		const secret = process.env.MANAGER_JWT_SECRET;
-		if (!secret) {
-			return ApiResponseHandler(
-				false,
-				StatusCode.INTERNAL_SERVER_ERROR,
-				"JWT secret is not defined"
-			);
-		}
-		const bearerToken = token.split(" ")[1];
-		const decodedToken = jwt.verify(bearerToken, secret);
-		const id =
-			typeof decodedToken !== "string" && "id" in decodedToken
-				? decodedToken.id
-				: null;
-
-		// const url = new URL(req.url);
-		// const id = url.searchParams.get("id");
-
-		// Validate ID
 		idSchema.parse(id);
 
 		const deletedUser = await User.findByIdAndUpdate(

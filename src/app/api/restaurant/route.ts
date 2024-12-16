@@ -4,11 +4,12 @@ import Restaurant from "@/models/restaurant.model";
 import { connectDB } from "@/app/lib/mongoose";
 import z from "zod";
 import User from "@/models/user.model";
-import jwt from "jsonwebtoken";
 import { handleErrorResponse } from "@/app/handlers/errorHandler";
 import axios from "axios";
 import ApiResponseHandler from "@/app/handlers/apiResponseHandler";
 import { StatusCode } from "@/constants/statusCodes";
+import { verifyToken } from "@/app/handlers/verifyToken";
+import { UserRole } from "@/constants/userRole";
 
 const inputSchema = z.object({
 	owneremail: z.string().email(),
@@ -55,26 +56,24 @@ export async function POST(req: any) {
 	try {
 		await connectDB();
 		const body = await req.json();
-		const superAdminToken = req.headers.get("superadmintoken").split(" ")[1];
-		const superadminsecret = process.env.SUPER_ADMIN_JWT_SECRET;
-		if (!superadminsecret) {
-			return ApiResponseHandler(
-				false,
-				StatusCode.INTERNAL_SERVER_ERROR,
-				"Server error"
-			);
+		const authorization = req.headers.get("authorization");
+		let userInfo;
+		try {
+			userInfo = verifyToken(authorization);
+		} catch (error: any) {
+			return ApiResponseHandler(false, StatusCode.UNAUTHORIZED, error.message);
 		}
-		const decoded = jwt.verify(superAdminToken, superadminsecret);
-		if (!decoded) {
+		const { id, role } = userInfo;
+		if (role !== UserRole.SUPERADMIN) {
 			return ApiResponseHandler(
 				false,
 				StatusCode.UNAUTHORIZED,
-				"Invalid token"
+				"SuperAdmin Login is required"
 			);
 		}
 		const data = inputSchema.parse(body);
 		const owner = await User.findOne({ email: data.owneremail });
-		if (!owner || owner.deleted || owner.role !== "admin") {
+		if (!owner || owner.deleted || owner.role !== UserRole.ADMIN) {
 			return ApiResponseHandler(false, StatusCode.NOT_FOUND, "Owner not found");
 		}
 		if (!body.otp) {
@@ -116,32 +115,19 @@ export async function PUT(req: any) {
 	try {
 		await connectDB();
 		const body = await req.json();
-		const adminToken = req.headers.get("admintoken")?.split(" ")[1];
-		const adminsecret = process.env.ADMIN_JWT_SECRET;
-		if (!adminsecret) {
-			return ApiResponseHandler(
-				false,
-				StatusCode.INTERNAL_SERVER_ERROR,
-				"Server error"
-			);
+		const authorization = req.headers.get("authorization");
+		let userInfo;
+		try {
+			userInfo = verifyToken(authorization);
+		} catch (error: any) {
+			return ApiResponseHandler(false, StatusCode.UNAUTHORIZED, error.message);
 		}
-		const decodedAdmin = jwt.verify(adminToken, adminsecret);
-		if (!decodedAdmin) {
+		const { id: adminId, role } = userInfo;
+		if (role !== UserRole.ADMIN) {
 			return ApiResponseHandler(
 				false,
 				StatusCode.UNAUTHORIZED,
-				"Invalid token"
-			);
-		}
-
-		let adminId: string;
-		if (typeof decodedAdmin !== "string" && "id" in decodedAdmin) {
-			adminId = decodedAdmin.id;
-		} else {
-			return ApiResponseHandler(
-				false,
-				StatusCode.UNAUTHORIZED,
-				"Invalid token"
+				"Admin Login is required"
 			);
 		}
 
@@ -156,7 +142,6 @@ export async function PUT(req: any) {
 				"Restaurant not found"
 			);
 		}
-		console.log(updates.managerEmail);
 		if (updates.managerEmail) {
 			const manager = await User.findOne({ email: updates.managerEmail });
 			if (!manager) {
@@ -211,44 +196,23 @@ export async function DELETE(req: any) {
 		await connectDB();
 		const body = await req.json();
 		const { id } = deleteSchema.parse(body);
-		const adminToken = req.headers.get("admintoken")
-			? req.headers.get("admintoken").split(" ")[1]
-			: "";
-		if (!adminToken) {
+		const authorization = req.headers.get("authorization");
+		let userInfo;
+		try {
+			userInfo = verifyToken(authorization);
+		} catch (error: any) {
+			return ApiResponseHandler(false, StatusCode.UNAUTHORIZED, error.message);
+		}
+		const { id: adminId, role } = userInfo;
+		if (role !== UserRole.ADMIN) {
 			return ApiResponseHandler(
 				false,
 				StatusCode.UNAUTHORIZED,
-				"Invalid token"
-			);
-		}
-		const adminsecret = process.env.ADMIN_JWT_SECRET;
-		if (!adminsecret) {
-			return ApiResponseHandler(
-				false,
-				StatusCode.INTERNAL_SERVER_ERROR,
-				"Server error"
-			);
-		}
-		const decodedAdmin = jwt.verify(adminToken, adminsecret);
-		if (!decodedAdmin) {
-			return ApiResponseHandler(
-				false,
-				StatusCode.UNAUTHORIZED,
-				"Invalid token"
-			);
-		}
-		let adminid: string;
-		if (typeof decodedAdmin !== "string" && "id" in decodedAdmin) {
-			adminid = decodedAdmin.id;
-		} else {
-			return ApiResponseHandler(
-				false,
-				StatusCode.UNAUTHORIZED,
-				"Invalid token"
+				"Admin Login is required"
 			);
 		}
 		const restaurant = await Restaurant.findById(id);
-		if (!restaurant || restaurant.owner.toString() !== adminid) {
+		if (!restaurant || restaurant.owner.toString() !== adminId) {
 			return ApiResponseHandler(
 				false,
 				StatusCode.NOT_FOUND,

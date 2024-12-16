@@ -8,6 +8,7 @@ import { handleErrorResponse } from "@/app/handlers/errorHandler";
 import axios from "axios";
 import ApiResponseHandler from "@/app/handlers/apiResponseHandler";
 import { StatusCode } from "@/constants/statusCodes";
+import { ExpiryTime } from "@/constants/expiryTime";
 
 const signInSchema = z.object({
 	email: z.string().email(),
@@ -60,7 +61,7 @@ export async function POST(req: any) {
 			);
 		}
 		const id = existingUser._id;
-		const token = jwt.sign({ id }, secret, { expiresIn: "6h" });
+		const token = jwt.sign({ id }, secret, { expiresIn: ExpiryTime.JWT });
 		return ApiResponseHandler(true, StatusCode.SUCCESS, `Bearer ${token}`);
 	} catch (error) {
 		return handleErrorResponse(error);

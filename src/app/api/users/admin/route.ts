@@ -9,6 +9,9 @@ import { handleErrorResponse } from "@/app/handlers/errorHandler";
 import axios from "axios";
 import ApiResponseHandler from "@/app/handlers/apiResponseHandler";
 import { StatusCode } from "@/constants/statusCodes";
+import { verifyToken } from "@/app/handlers/verifyToken";
+import { UserRole } from "@/constants/userRole";
+import { ExpiryTime } from "@/constants/expiryTime";
 
 // Updated phone validation to handle phone numbers as strings
 const userSchema = z.object({
@@ -36,43 +39,29 @@ export async function POST(req: any) {
 	try {
 		await connectDB();
 		const body = await req.json(); // Accessing body from req
-		const superadmintoken = req.headers.get("superadmintoken");
-		console.log(superadmintoken);
-		const superadminsecret = process.env.SUPER_ADMIN_JWT_SECRET;
-		if (!superadmintoken) {
+		const authorization = req.headers.get("authorization");
+		let userInfo;
+		try {
+			userInfo = verifyToken(authorization);
+		} catch (error: any) {
+			return ApiResponseHandler(false, StatusCode.UNAUTHORIZED, error.message);
+		}
+		const { id: superAdminId, role } = userInfo;
+		if (role !== UserRole.SUPERADMIN) {
 			return ApiResponseHandler(
 				false,
 				StatusCode.UNAUTHORIZED,
-				"Super Admin Token is required"
-			);
-		}
-		if (!superadminsecret) {
-			return ApiResponseHandler(
-				false,
-				StatusCode.INTERNAL_SERVER_ERROR,
-				"Super Admin JWT secret is not defined"
+				"Unauthorized access"
 			);
 		}
 
-		const token1 = superadmintoken.split(" ")[1];
-
-		const superadminid = jwt.verify(token1, superadminsecret);
-		if (!superadminid) {
+		const user = await User.findById(superAdminId);
+		if (!user || user.deleted || user.role !== UserRole.SUPERADMIN) {
 			return ApiResponseHandler(
 				false,
-				StatusCode.UNAUTHORIZED,
-				"Invalid Super Admin Token"
+				StatusCode.NOT_FOUND,
+				"Super Admin not found"
 			);
-		} else {
-			const id = (superadminid as jwt.JwtPayload).id;
-			const user = await User.findById(id);
-			if (!user || user.deleted) {
-				return ApiResponseHandler(
-					false,
-					StatusCode.NOT_FOUND,
-					"Super Admin not found"
-				);
-			}
 		}
 
 		const data = userSchema.parse(body); // Validating request body
@@ -86,12 +75,9 @@ export async function POST(req: any) {
 		}
 		if (!body.otp) {
 			try {
-				const generateOTP = await axios.post(
-					`${process.env.URL}/api/otp/generate`,
-					{
-						email: data.email,
-					}
-				);
+				await axios.post(`${process.env.URL}/api/otp/generate`, {
+					email: data.email,
+				});
 				return ApiResponseHandler(
 					true,
 					StatusCode.SUCCESS,
@@ -136,7 +122,7 @@ export async function POST(req: any) {
 			);
 		}
 		const id = response._id;
-		const token = jwt.sign({ id }, secret, { expiresIn: "6h" });
+		const token = jwt.sign({ id }, secret, { expiresIn: ExpiryTime.JWT });
 		return ApiResponseHandler(true, StatusCode.SUCCESS, `Bearer ${token}`);
 	} catch (error) {
 		return handleErrorResponse(error);
@@ -146,30 +132,16 @@ export async function POST(req: any) {
 export async function GET(req: any) {
 	try {
 		await connectDB();
-		const token = req.headers.get("token");
-		if (!token) {
-			return ApiResponseHandler(
-				false,
-				StatusCode.UNAUTHORIZED,
-				"Sign In is required"
-			);
+		const authorization = req.headers.get("authorization");
+		let userInfo;
+		try {
+			userInfo = verifyToken(authorization);
+		} catch (error: any) {
+			return ApiResponseHandler(false, StatusCode.UNAUTHORIZED, error.message);
 		}
-		const secret = process.env.ADMIN_JWT_SECRET;
-		if (!secret) {
-			return ApiResponseHandler(
-				false,
-				StatusCode.INTERNAL_SERVER_ERROR,
-				"JWT secret is not defined"
-			);
-		}
-		const bearerToken = token.split(" ")[1];
-		const decodedToken = jwt.verify(bearerToken, secret);
-		const id =
-			typeof decodedToken !== "string" && "id" in decodedToken
-				? decodedToken.id
-				: null;
+		const { id, role } = userInfo;
 
-		if (id) {
+		if (id && role == UserRole.ADMIN) {
 			// Validate ID and fetch single user
 			try {
 				idSchema.parse(id);
@@ -195,34 +167,19 @@ export async function PUT(req: any) {
 	try {
 		await connectDB();
 		const body = await req.json();
-		const token = req.headers.get("token");
-		if (!token) {
+		const authorization = req.headers.get("authorization");
+		let userInfo;
+		try {
+			userInfo = verifyToken(authorization);
+		} catch (error: any) {
+			return ApiResponseHandler(false, StatusCode.UNAUTHORIZED, error.message);
+		}
+		const { id, role } = userInfo;
+		if (role !== UserRole.ADMIN) {
 			return ApiResponseHandler(
 				false,
 				StatusCode.UNAUTHORIZED,
-				"Sign In is required"
-			);
-		}
-		const secret = process.env.ADMIN_JWT_SECRET;
-		if (!secret) {
-			return ApiResponseHandler(
-				false,
-				StatusCode.INTERNAL_SERVER_ERROR,
-				"JWT secret is not defined"
-			);
-		}
-		const bearerToken = token.split(" ")[1];
-		const decodedToken = jwt.verify(bearerToken, secret);
-		const id =
-			typeof decodedToken !== "string" && "id" in decodedToken
-				? decodedToken.id
-				: null;
-
-		if (!id) {
-			return ApiResponseHandler(
-				false,
-				StatusCode.BAD_REQUEST,
-				"User ID is required"
+				"Unauthorized access"
 			);
 		}
 
@@ -245,33 +202,21 @@ export async function PUT(req: any) {
 export async function DELETE(req: any) {
 	try {
 		await connectDB();
-		const token = req.headers.get("token");
-		if (!token) {
+		const authorization = req.headers.get("authorization");
+		let userInfo;
+		try {
+			userInfo = verifyToken(authorization);
+		} catch (error: any) {
+			return ApiResponseHandler(false, StatusCode.UNAUTHORIZED, error.message);
+		}
+		const { id, role } = userInfo;
+		if (role !== UserRole.ADMIN) {
 			return ApiResponseHandler(
 				false,
 				StatusCode.UNAUTHORIZED,
-				"Sign In is required"
+				"Unauthorized access"
 			);
 		}
-		const secret = process.env.ADMIN_JWT_SECRET;
-		if (!secret) {
-			return ApiResponseHandler(
-				false,
-				StatusCode.INTERNAL_SERVER_ERROR,
-				"JWT secret is not defined"
-			);
-		}
-		const bearerToken = token.split(" ")[1];
-		const decodedToken = jwt.verify(bearerToken, secret);
-		const id =
-			typeof decodedToken !== "string" && "id" in decodedToken
-				? decodedToken.id
-				: null;
-
-		// const url = new URL(req.url);
-		// const id = url.searchParams.get("id");
-
-		// Validate ID
 		idSchema.parse(id);
 
 		const deletedUser = await User.findByIdAndUpdate(

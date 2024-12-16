@@ -6,8 +6,7 @@ import { connectDB } from "@/app/lib/mongoose";
 import OTPModel from "@/models/otp.model";
 import ApiResponseHandler from "@/app/handlers/apiResponseHandler";
 import { StatusCode } from "@/constants/statusCodes";
-
-const OTP_EXPIRATION_TIME = 15 * 60 * 1000;
+import { ExpiryTime } from "@/constants/expiryTime";
 
 async function sendEmail(to: string, otp: string) {
 	const transporter = nodemailer.createTransport({
@@ -22,7 +21,9 @@ async function sendEmail(to: string, otp: string) {
 		from: process.env.EMAIL_USER,
 		to,
 		subject: "Your OTP Code",
-		text: `Your OTP code is ${otp}. It is valid for 15 minutes.`,
+		text: `Your OTP code is ${otp}. It is valid for ${
+			ExpiryTime.OTP / (60 * 1000)
+		} minutes.`,
 	};
 
 	return transporter.sendMail(mailOptions);
@@ -46,7 +47,7 @@ export async function POST(req: Request) {
 		lowerCaseAlphabets: false,
 		specialChars: false,
 	});
-	const expiresAt = Date.now() + OTP_EXPIRATION_TIME;
+	const expiresAt = Date.now() + ExpiryTime.OTP;
 
 	const otpHash = crypto
 		.createHmac("sha256", process.env.OTP_SECRET || "defaultSecret")

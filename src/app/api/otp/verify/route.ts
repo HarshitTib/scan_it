@@ -39,7 +39,6 @@ export async function POST(req: Request) {
 			.createHmac("sha256", process.env.OTP_SECRET || "defaultSecret")
 			.update(otp)
 			.digest("hex");
-
 		if (computedHash !== otpHash) {
 			return ApiResponseHandler(false, StatusCode.BAD_REQUEST, "Invalid OTP");
 		}
